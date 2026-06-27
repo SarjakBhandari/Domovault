@@ -31,10 +31,26 @@ function verifyRefreshToken(token) {
   return jwt.verify(token, env.JWT_REFRESH_SECRET, { algorithms: [ALGORITHM] });
 }
 
+// Issued after password is verified but before MFA is, on a separate secret
+// with a very short expiry. Carries no role/permissions - it is only ever
+// accepted by POST /api/auth/mfa/verify, never by requireAuth.
+function signMfaChallengeToken(payload) {
+  return jwt.sign(payload, env.JWT_MFA_SECRET, {
+    algorithm: ALGORITHM,
+    expiresIn: env.JWT_MFA_EXPIRES_IN,
+  });
+}
+
+function verifyMfaChallengeToken(token) {
+  return jwt.verify(token, env.JWT_MFA_SECRET, { algorithms: [ALGORITHM] });
+}
+
 module.exports = {
   ALGORITHM,
   signAccessToken,
   signRefreshToken,
   verifyAccessToken,
   verifyRefreshToken,
+  signMfaChallengeToken,
+  verifyMfaChallengeToken,
 };
