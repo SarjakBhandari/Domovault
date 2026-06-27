@@ -6,9 +6,9 @@ threat-model plan.
 
 ## Architecture
 
-- `backend/` — Express + MongoDB/Mongoose API, runs on its own port, never
+- `backend/` - Express + MongoDB/Mongoose API, runs on its own port, never
   exposed directly to the browser.
-- `frontend/` — Next.js (App Router) app. Every browser-facing page lives
+- `frontend/` - Next.js (App Router) app. Every browser-facing page lives
   here. `app/api/[...path]/route.ts` proxies all `/api/*` calls to the
   backend server-side, so the browser only ever talks to one origin.
 
