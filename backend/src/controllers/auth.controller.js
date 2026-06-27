@@ -1,8 +1,13 @@
 const ms = require('ms');
 const User = require('../models/User');
 const env = require('../config/env');
-const { signAccessToken, signRefreshToken, verifyRefreshToken } = require('../utils/jwt');
-const { FAILED_ATTEMPT_THRESHOLD, cooldownMsForLevel } = require('../utils/lockout');
+const {
+  signAccessToken,
+  signRefreshToken,
+  verifyRefreshToken,
+  signMfaChallengeToken,
+} = require('../utils/jwt');
+const { recordFailedAttempt } = require('../utils/lockout');
 
 const REFRESH_COOKIE_NAME = 'refreshToken';
 
@@ -21,6 +26,18 @@ function clearRefreshCookie(res) {
     secure: env.NODE_ENV === 'production',
     sameSite: 'strict',
   });
+}
+
+// Shared by login() (no MFA) and mfa.controller.js's verify() (after MFA
+// passes) - the only two places a full session is ever issued.
+async function issueSession(res, user) {
+  const accessToken = signAccessToken({ sub: user._id.toString(), role: user.role });
+  const refreshToken = signRefreshToken({ sub: user._id.toString() });
+  user.setRefreshToken(refreshToken);
+  await user.save();
+
+  setRefreshCookie(res, refreshToken);
+  return accessToken;
 }
 
 // Body is already Zod-validated and stripped to {fullName, email, password}
@@ -65,37 +82,20 @@ async function login(req, res, next) {
 
     const passwordValid = await user.verifyPassword(password);
     if (!passwordValid) {
-      // Atomic increment so two concurrent failed attempts can't both read
-      // the same pre-increment count and both miss the threshold.
-      const updated = await User.findByIdAndUpdate(
-        user._id,
-        { $inc: { failedLoginAttempts: 1 } },
-        { new: true }
-      );
-
-      if (updated.failedLoginAttempts >= FAILED_ATTEMPT_THRESHOLD) {
-        const cooldownMs = cooldownMsForLevel(updated.lockLevel);
-        await User.updateOne(
-          { _id: user._id },
-          {
-            $set: { lockUntil: new Date(Date.now() + cooldownMs), failedLoginAttempts: 0 },
-            $inc: { lockLevel: 1 },
-          }
-        );
-      }
-
+      await recordFailedAttempt(User, user._id);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
     user.failedLoginAttempts = 0;
     user.lockUntil = null;
 
-    const accessToken = signAccessToken({ sub: user._id.toString(), role: user.role });
-    const refreshToken = signRefreshToken({ sub: user._id.toString() });
-    user.setRefreshToken(refreshToken);
-    await user.save();
+    if (user.mfaEnabled) {
+      await user.save();
+      const mfaToken = signMfaChallengeToken({ sub: user._id.toString() });
+      return res.json({ mfaRequired: true, mfaToken });
+    }
 
-    setRefreshCookie(res, refreshToken);
+    const accessToken = await issueSession(res, user);
     return res.json({ accessToken, user: user.toJSON() });
   } catch (err) {
     next(err);
@@ -161,4 +161,4 @@ async function logout(req, res, next) {
   }
 }
 
-module.exports = { register, login, refresh, logout };
+module.exports = { register, login, refresh, logout, issueSession };
