@@ -13,6 +13,8 @@ process.env.JWT_ACCESS_SECRET = 'test-access-secret-at-least-32-bytes-long';
 process.env.JWT_ACCESS_EXPIRES_IN = '15m';
 process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-at-least-32-bytes-long';
 process.env.JWT_REFRESH_EXPIRES_IN = '15d';
+process.env.JWT_MFA_SECRET = 'test-mfa-secret-at-least-32-bytes-long-too';
+process.env.JWT_MFA_EXPIRES_IN = '5m';
 process.env.PII_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
 
 const { verifyAccessToken, signAccessToken, ALGORITHM } = require('../src/utils/jwt');
