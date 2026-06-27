@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import PasswordField from '@/components/PasswordField';
+import { getCsrfToken } from '@/lib/csrf';
 
 type Status = 'idle' | 'submitting' | 'error' | 'success';
 
@@ -27,9 +28,11 @@ export default function RegisterPage() {
     setStatus('submitting');
 
     try {
+      const csrfToken = await getCsrfToken();
+
       const res = await fetch('/api/auth/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
         // Only the fields a guest is allowed to set are sent; role/isVerified
         // are never part of this payload, by design, and the backend allow-list
         // discards them even if a client tried to add them.
