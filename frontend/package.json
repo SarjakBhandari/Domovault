@@ -1,7 +1,7 @@
 {
-  "name": "domovault",
+  "name": "domovault-frontend",
   "version": "1.0.0",
-  "description": "A rental app",
+  "description": "Domovault Next.js client",
   "homepage": "https://github.com/SarjakBhandari/Domovault#readme",
   "bugs": {
     "url": "https://github.com/SarjakBhandari/Domovault/issues"
@@ -12,9 +12,34 @@
   },
   "license": "ISC",
   "author": "Sarjak Bhandari",
-  "type": "commonjs",
-  "main": "index.js",
+  "private": true,
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "next": "16.2.9",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@eslint/eslintrc": "3.3.5",
+    "@tailwindcss/postcss": "4.3.1",
+    "@types/node": "26.0.1",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.9",
+    "postcss": "8.5.15",
+    "tailwindcss": "4.3.1",
+    "typescript": "6.0.3"
+  },
+  "overrides": {
+    "postcss": "8.5.15"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
