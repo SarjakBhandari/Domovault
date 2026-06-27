@@ -33,6 +33,27 @@ const userSchema = new mongoose.Schema(
     // every successful refresh; a presented token that doesn't match this
     // hash is treated as reuse of a stale/stolen token.
     refreshTokenHash: { type: String, default: null, select: false },
+    // TOTP secret, encrypted at rest with the same AES-256-GCM utility as
+    // other PII. Only set once enrollment is confirmed with a valid code.
+    mfaEnabled: { type: Boolean, default: false },
+    mfaSecretEncrypted: { type: String, default: null, select: false },
+    // Holds the candidate secret between "start enrollment" and "confirm
+    // enrollment" - never activates MFA on its own, so a half-finished
+    // enrollment can't lock an account out.
+    mfaPendingSecretEncrypted: { type: String, default: null, select: false },
+    // Backup codes are stored as SHA-256 hashes, never plaintext. Each is
+    // single-use, tracked via usedAt rather than deleting on use so a user
+    // can see which codes are spent.
+    mfaBackupCodes: {
+      type: [
+        {
+          codeHash: { type: String, required: true },
+          usedAt: { type: Date, default: null },
+        },
+      ],
+      default: [],
+      select: false,
+    },
   },
   { timestamps: true }
 );
@@ -69,6 +90,59 @@ userSchema.methods.isLocked = function isLocked() {
   return Boolean(this.lockUntil && this.lockUntil.getTime() > Date.now());
 };
 
+userSchema.methods.setPendingMfaSecret = function setPendingMfaSecret(secret) {
+  this.mfaPendingSecretEncrypted = encrypt(secret);
+};
+
+userSchema.methods.readPendingMfaSecret = function readPendingMfaSecret() {
+  return decrypt(this.mfaPendingSecretEncrypted);
+};
+
+userSchema.methods.readMfaSecret = function readMfaSecret() {
+  return decrypt(this.mfaSecretEncrypted);
+};
+
+userSchema.methods.activateMfa = function activateMfa() {
+  this.mfaSecretEncrypted = this.mfaPendingSecretEncrypted;
+  this.mfaPendingSecretEncrypted = null;
+  this.mfaEnabled = true;
+};
+
+userSchema.methods.disableMfa = function disableMfa() {
+  this.mfaEnabled = false;
+  this.mfaSecretEncrypted = null;
+  this.mfaPendingSecretEncrypted = null;
+  this.mfaBackupCodes = [];
+};
+
+function hashBackupCode(code) {
+  return crypto.createHash('sha256').update(code).digest('hex');
+}
+
+// Backup codes carry enough entropy on their own (10 random bytes, base32)
+// that a fast hash is an acceptable tradeoff for a single-use, short-lived
+// secondary credential - unlike the password, there's no reuse-across-sites
+// risk and no need for Argon2's deliberate slowness here.
+userSchema.methods.setBackupCodes = function setBackupCodes(plainCodes) {
+  this.mfaBackupCodes = plainCodes.map((code) => ({ codeHash: hashBackupCode(code), usedAt: null }));
+};
+
+// Returns true and marks the matching code used on success; false if the
+// code doesn't match any stored hash or has already been spent.
+userSchema.methods.consumeBackupCode = function consumeBackupCode(plainCode) {
+  const targetHash = hashBackupCode(plainCode);
+  const match = this.mfaBackupCodes.find(
+    (entry) => entry.codeHash === targetHash && !entry.usedAt
+  );
+
+  if (!match) {
+    return false;
+  }
+
+  match.usedAt = new Date();
+  return true;
+};
+
 // toJSON/toObject transforms are the last line of defense: even if a
 // controller forgets to .select() correctly, these fields never reach a
 // response body.
@@ -79,6 +153,9 @@ const stripSensitiveFields = (doc, ret) => {
   delete ret.failedLoginAttempts;
   delete ret.lockUntil;
   delete ret.lockLevel;
+  delete ret.mfaSecretEncrypted;
+  delete ret.mfaPendingSecretEncrypted;
+  delete ret.mfaBackupCodes;
   delete ret.__v;
   return ret;
 };

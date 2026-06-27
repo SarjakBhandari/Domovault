@@ -10,4 +10,26 @@ function cooldownMsForLevel(lockLevel) {
   return COOLDOWN_MINUTES_BY_LEVEL[index] * 60 * 1000;
 }
 
-module.exports = { FAILED_ATTEMPT_THRESHOLD, cooldownMsForLevel };
+// Shared by both the password-check failure path and the MFA-code failure
+// path - a wrong TOTP/backup code counts against the same threshold as a
+// wrong password, since both are guesses against the same account.
+async function recordFailedAttempt(User, userId) {
+  const updated = await User.findByIdAndUpdate(
+    userId,
+    { $inc: { failedLoginAttempts: 1 } },
+    { new: true }
+  );
+
+  if (updated.failedLoginAttempts >= FAILED_ATTEMPT_THRESHOLD) {
+    const cooldownMs = cooldownMsForLevel(updated.lockLevel);
+    await User.updateOne(
+      { _id: userId },
+      {
+        $set: { lockUntil: new Date(Date.now() + cooldownMs), failedLoginAttempts: 0 },
+        $inc: { lockLevel: 1 },
+      }
+    );
+  }
+}
+
+module.exports = { FAILED_ATTEMPT_THRESHOLD, cooldownMsForLevel, recordFailedAttempt };
