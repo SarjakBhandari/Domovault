@@ -1,0 +1,32 @@
+services:
+  mongo:
+    image: mongo:8.0
+    container_name: domovault-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    container_name: domovault-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017/domovault
+    ports:
+      - "4000:4000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mongo-data:
