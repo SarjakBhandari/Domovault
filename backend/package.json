@@ -1,0 +1,20 @@
+{
+  "name": "domovault-backend",
+  "version": "1.0.0",
+  "description": "A rental app",
+  "homepage": "https://github.com/SarjakBhandari/Domovault#readme",
+  "bugs": {
+    "url": "https://github.com/SarjakBhandari/Domovault/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SarjakBhandari/Domovault.git"
+  },
+  "license": "ISC",
+  "author": "Sarjak Bhandari",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
