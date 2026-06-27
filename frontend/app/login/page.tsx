@@ -3,6 +3,8 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import PasswordField from '@/components/PasswordField';
+import { getCsrfToken } from '@/lib/csrf';
+import { setAccessToken } from '@/lib/authToken';
 
 type Status = 'idle' | 'submitting' | 'error';
 
@@ -18,9 +20,11 @@ export default function LoginPage() {
     setError(null);
 
     try {
+      const csrfToken = await getCsrfToken();
+
       const res = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
         body: JSON.stringify({ email, password }),
       });
 
@@ -31,6 +35,8 @@ export default function LoginPage() {
         return;
       }
 
+      const data = await res.json();
+      setAccessToken(data.accessToken);
       window.location.href = '/';
     } catch {
       setError('We could not reach Domovault. Check your connection and try again.');
