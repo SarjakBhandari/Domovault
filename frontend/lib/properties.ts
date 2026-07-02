@@ -1,6 +1,9 @@
 import type { Property } from './types';
 
-const PROPERTIES: Property[] = [
+// Static data is used as a graceful fallback when the backend API is not
+// reachable (local development without a running server). In production the
+// API calls below will succeed and this data is not used.
+const MOCK_PROPERTIES: Property[] = [
   {
     id: 'p-001',
     title: 'Sunny 2-Bed Apartment near City Park',
@@ -63,8 +66,23 @@ const PROPERTIES: Property[] = [
   },
 ];
 
-function simulateNetworkDelay<T>(value: T, ms = 500): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), ms));
+// Converts a backend API property document to the frontend Property type.
+// The backend uses MongoDB _id; the frontend type uses id.
+function fromApiProperty(doc: Record<string, unknown>): Property {
+  return {
+    id: String(doc._id),
+    title: String(doc.title),
+    city: String(doc.city),
+    address: String(doc.address),
+    rentPerMonth: Number(doc.rentPerMonth),
+    bedrooms: Number(doc.bedrooms),
+    bathrooms: Number(doc.bathrooms),
+    sizeSqft: Number(doc.sizeSqft),
+    amenities: Array.isArray(doc.amenities) ? (doc.amenities as string[]) : [],
+    description: String(doc.description),
+    imageAlt: String(doc.title),
+    available: doc.status === 'available',
+  };
 }
 
 export type PropertyFilters = {
@@ -75,33 +93,52 @@ export type PropertyFilters = {
 };
 
 export async function getProperties(filters: PropertyFilters = {}): Promise<Property[]> {
-  const results = PROPERTIES.filter((property) => {
-    if (filters.city && property.city.toLowerCase() !== filters.city.toLowerCase()) {
-      return false;
-    }
-    if (typeof filters.maxRent === 'number' && property.rentPerMonth > filters.maxRent) {
-      return false;
-    }
-    if (typeof filters.bedrooms === 'number' && property.bedrooms !== filters.bedrooms) {
-      return false;
-    }
-    if (filters.query) {
-      const haystack = `${property.title} ${property.city} ${property.address}`.toLowerCase();
-      if (!haystack.includes(filters.query.toLowerCase())) {
-        return false;
-      }
-    }
-    return true;
-  });
+  const params = new URLSearchParams();
+  if (filters.city) params.set('city', filters.city);
+  if (typeof filters.maxRent === 'number') params.set('maxRent', String(filters.maxRent));
+  if (typeof filters.bedrooms === 'number') params.set('bedrooms', String(filters.bedrooms));
+  if (filters.query) params.set('query', filters.query);
 
-  return simulateNetworkDelay(results);
+  try {
+    const res = await fetch(`/api/properties?${params.toString()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error('API error');
+    const data = (await res.json()) as { items: Record<string, unknown>[] };
+    return data.items.map(fromApiProperty);
+  } catch {
+    // Fall back to mock data when the backend is unavailable (local dev).
+    const results = MOCK_PROPERTIES.filter((p) => {
+      if (filters.city && p.city.toLowerCase() !== filters.city.toLowerCase()) return false;
+      if (typeof filters.maxRent === 'number' && p.rentPerMonth > filters.maxRent) return false;
+      if (typeof filters.bedrooms === 'number' && p.bedrooms !== filters.bedrooms) return false;
+      if (filters.query) {
+        const haystack = `${p.title} ${p.city} ${p.address}`.toLowerCase();
+        if (!haystack.includes(filters.query.toLowerCase())) return false;
+      }
+      return true;
+    });
+    return results;
+  }
 }
 
 export async function getFeaturedProperties(): Promise<Property[]> {
-  return simulateNetworkDelay(PROPERTIES.filter((p) => p.available).slice(0, 3));
+  try {
+    const res = await fetch('/api/properties?limit=3', { cache: 'no-store' });
+    if (!res.ok) throw new Error('API error');
+    const data = (await res.json()) as { items: Record<string, unknown>[] };
+    return data.items.map(fromApiProperty);
+  } catch {
+    return MOCK_PROPERTIES.filter((p) => p.available).slice(0, 3);
+  }
 }
 
 export async function getPropertyById(id: string): Promise<Property | null> {
-  const found = PROPERTIES.find((p) => p.id === id) ?? null;
-  return simulateNetworkDelay(found);
+  try {
+    const res = await fetch(`/api/properties/${id}`, { cache: 'no-store' });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error('API error');
+    const doc = (await res.json()) as Record<string, unknown>;
+    return fromApiProperty(doc);
+  } catch {
+    return MOCK_PROPERTIES.find((p) => p.id === id) ?? null;
+  }
 }
