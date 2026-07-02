@@ -8,6 +8,8 @@ const ROLES = ['applicant', 'tenant', 'admin'];
 const userSchema = new mongoose.Schema(
   {
     fullName: { type: String, required: true, trim: true, maxlength: 100 },
+    phone: { type: String, trim: true, maxlength: 30, default: null },
+    bio: { type: String, trim: true, maxlength: 500, default: null },
     email: {
       type: String,
       required: true,
