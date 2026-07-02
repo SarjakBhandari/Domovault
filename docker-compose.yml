@@ -49,10 +49,16 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    # uploads_data is a named volume (not tmpfs) so uploaded files survive
+    # container rebuilds. It mounts at /app/uploads, which is the only path
+    # the process writes to besides /tmp.
+    volumes:
+      - uploads_data:/app/uploads
     env_file:
       - ./backend/.env
     environment:
       - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/domovault?authSource=admin
+      - UPLOAD_DIR=/app/uploads
     ports:
       - "4000:4000"
     depends_on:
@@ -61,3 +67,4 @@ services:
 
 volumes:
   mongo-data:
+  uploads_data:

@@ -20,6 +20,7 @@ const verifyMfaSchema = z
   .object({
     mfaToken: z.string().min(1),
     code: z.string().trim().min(6).max(64),
+    captchaToken: z.string().max(2048).optional(),
   })
   .strict();
 
