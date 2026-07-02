@@ -8,6 +8,7 @@ const {
   signMfaChallengeToken,
 } = require('../utils/jwt');
 const { recordFailedAttempt } = require('../utils/lockout');
+const { verifyCaptcha } = require('../utils/captcha');
 
 const REFRESH_COOKIE_NAME = 'refreshToken';
 
@@ -64,7 +65,7 @@ async function register(req, res, next) {
 
 async function login(req, res, next) {
   try {
-    const { email, password } = req.body;
+    const { email, password, captchaToken } = req.body;
 
     const user = await User.findOne({ email }).select('+passwordHash');
     if (!user) {
@@ -78,6 +79,19 @@ async function login(req, res, next) {
         error: 'Account temporarily locked due to repeated failed attempts',
         retryAfterSeconds,
       });
+    }
+
+    // Gated on the account's own failed-attempt count, not just the IP-level
+    // rate limiter - a slow, distributed credential-stuffing attempt against
+    // one account still trips this even if no single IP looks abusive.
+    if (user.failedLoginAttempts >= env.CAPTCHA_TRIGGER_THRESHOLD) {
+      const captchaValid = await verifyCaptcha(captchaToken);
+      if (!captchaValid) {
+        return res.status(400).json({
+          error: 'CAPTCHA verification required',
+          captchaRequired: true,
+        });
+      }
     }
 
     const passwordValid = await user.verifyPassword(password);

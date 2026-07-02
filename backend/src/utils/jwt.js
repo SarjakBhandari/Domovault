@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const env = require('../config/env');
 
@@ -6,15 +7,23 @@ const env = require('../config/env');
 // is no path through this codebase that accepts a second algorithm.
 const ALGORITHM = 'HS256';
 
+// Every token gets a random jti, distinct from the rest of the claims. Two
+// tokens issued with identical claims in the same second would otherwise be
+// byte-for-byte identical - this also gives every issued token a stable,
+// unique identifier for future revocation/audit-log correlation.
+function withJti(payload) {
+  return { ...payload, jti: crypto.randomUUID() };
+}
+
 function signAccessToken(payload) {
-  return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
+  return jwt.sign(withJti(payload), env.JWT_ACCESS_SECRET, {
     algorithm: ALGORITHM,
     expiresIn: env.JWT_ACCESS_EXPIRES_IN,
   });
 }
 
 function signRefreshToken(payload) {
-  return jwt.sign(payload, env.JWT_REFRESH_SECRET, {
+  return jwt.sign(withJti(payload), env.JWT_REFRESH_SECRET, {
     algorithm: ALGORITHM,
     expiresIn: env.JWT_REFRESH_EXPIRES_IN,
   });
@@ -35,7 +44,7 @@ function verifyRefreshToken(token) {
 // with a very short expiry. Carries no role/permissions - it is only ever
 // accepted by POST /api/auth/mfa/verify, never by requireAuth.
 function signMfaChallengeToken(payload) {
-  return jwt.sign(payload, env.JWT_MFA_SECRET, {
+  return jwt.sign(withJti(payload), env.JWT_MFA_SECRET, {
     algorithm: ALGORITHM,
     expiresIn: env.JWT_MFA_EXPIRES_IN,
   });

@@ -17,7 +17,7 @@ async function recordFailedAttempt(User, userId) {
   const updated = await User.findByIdAndUpdate(
     userId,
     { $inc: { failedLoginAttempts: 1 } },
-    { new: true }
+    { returnDocument: 'after' }
   );
 
   if (updated.failedLoginAttempts >= FAILED_ATTEMPT_THRESHOLD) {
