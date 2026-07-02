@@ -1,0 +1,70 @@
+services:
+  mongo:
+    image: mongo:8.0@sha256:45b422ba19c0f028a917ea43746ab8e8cdbdaaeb50d2e6e634a17c59666e0dbb
+    container_name: domovault-mongo
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    # No cap_drop here: the official entrypoint starts as root to chown the
+    # data volume, then steps down to the unprivileged "mongodb" user itself -
+    # dropping capabilities breaks that self-demotion on a fresh volume.
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--quiet",
+          "-u",
+          "${MONGO_ROOT_USERNAME}",
+          "-p",
+          "${MONGO_ROOT_PASSWORD}",
+          "--authenticationDatabase",
+          "admin",
+          "--eval",
+          "db.adminCommand('ping')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Not published to the host: only the backend, on the internal compose
+    # network, ever talks to Mongo. Use `docker compose exec mongo mongosh`
+    # for local inspection instead of opening the port.
+
+  backend:
+    build:
+      context: ./backend
+    container_name: domovault-backend
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    # uploads_data is a named volume (not tmpfs) so uploaded files survive
+    # container rebuilds. It mounts at /app/uploads, which is the only path
+    # the process writes to besides /tmp.
+    volumes:
+      - uploads_data:/app/uploads
+    env_file:
+      - ./backend/.env
+    environment:
+      - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/domovault?authSource=admin
+      - UPLOAD_DIR=/app/uploads
+    ports:
+      - "4000:4000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+volumes:
+  mongo-data:
+  uploads_data:

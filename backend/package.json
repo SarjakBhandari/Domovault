@@ -1,0 +1,48 @@
+{
+  "name": "domovault-backend",
+  "version": "1.0.0",
+  "description": "Domovault API server (Express + MongoDB)",
+  "homepage": "https://github.com/SarjakBhandari/Domovault#readme",
+  "bugs": {
+    "url": "https://github.com/SarjakBhandari/Domovault/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SarjakBhandari/Domovault.git"
+  },
+  "license": "ISC",
+  "author": "Sarjak Bhandari",
+  "type": "commonjs",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "argon2": "0.44.0",
+    "cookie-parser": "1.4.7",
+    "cors": "2.8.6",
+    "dotenv": "17.4.2",
+    "express": "4.22.2",
+    "express-mongo-sanitize": "2.2.0",
+    "express-rate-limit": "8.5.2",
+    "file-type": "^22.0.1",
+    "helmet": "8.2.0",
+    "jsonwebtoken": "9.0.3",
+    "mongoose": "9.7.3",
+    "ms": "2.1.3",
+    "multer": "^2.0.1",
+    "otplib": "13.4.1",
+    "qrcode": "1.5.4",
+    "sanitize-html": "^2.14.0",
+    "sharp": "^0.33.5",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "supertest": "7.2.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
