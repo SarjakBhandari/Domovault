@@ -16,6 +16,13 @@ COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json ./
 COPY --chown=node:node src ./src
 
+# Create the uploads directory tree as the node user so the app can write
+# files there even with read_only:true on the container rootfs. The actual
+# uploads volume is mounted at /app/uploads by docker-compose, which overrides
+# this empty placeholder directory.
+RUN mkdir -p /app/uploads/documents /app/uploads/photos /app/uploads/qrcodes /app/uploads/proofs \
+    && chown -R node:node /app/uploads
+
 USER node
 EXPOSE 4000
 
