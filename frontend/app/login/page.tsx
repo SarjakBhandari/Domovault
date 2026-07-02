@@ -36,8 +36,13 @@ export default function LoginPage() {
       }
 
       const data = await res.json();
+      if (data.mfaRequired) {
+        sessionStorage.setItem('domovault.mfaToken', data.mfaToken ?? '');
+        window.location.href = '/mfa-verify';
+        return;
+      }
       setAccessToken(data.accessToken);
-      window.location.href = '/';
+      window.location.href = '/dashboard';
     } catch {
       setError('We could not reach Domovault. Check your connection and try again.');
       setStatus('error');

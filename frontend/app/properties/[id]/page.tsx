@@ -101,14 +101,22 @@ export default async function PropertyDetailsPage({ params }: PageProps) {
         </ul>
       </section>
 
-      <div className="mt-10 border-t border-slate-200 pt-6">
+      <div className="mt-10 flex flex-wrap items-center gap-4 border-t border-slate-200 pt-6">
         {property.available ? (
-          <Link
-            href="/register"
-            className="inline-block rounded-md bg-brand-700 px-6 py-3 font-semibold text-white hover:bg-brand-800"
-          >
-            Sign up to apply
-          </Link>
+          <>
+            <Link
+              href={`/apply/${property.id}`}
+              className="inline-block rounded-md bg-brand-700 px-6 py-3 font-semibold text-white hover:bg-brand-800"
+            >
+              Apply for this property
+            </Link>
+            <Link
+              href="/register"
+              className="text-sm text-slate-500 hover:text-slate-700"
+            >
+              No account yet? Register first
+            </Link>
+          </>
         ) : (
           <p className="text-sm text-slate-500">
             This property is not currently accepting applications.
