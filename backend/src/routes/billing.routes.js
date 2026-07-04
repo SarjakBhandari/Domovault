@@ -12,6 +12,12 @@ const router = express.Router();
 
 const proofUpload = createUploadMiddleware('proof');
 
+// Tenant: list their own leases (used by the lease details page).
+router
+  .route('/leases')
+  .get(requireAuth, requireRole('tenant'), billingController.listLeases)
+  .all(methodNotAllowed(['GET']));
+
 // Tenant or admin: list billing cycles.
 router
   .route('/')

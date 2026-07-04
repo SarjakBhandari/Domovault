@@ -163,6 +163,19 @@ async function downloadProof(req, res, next) {
   }
 }
 
+// Tenant: list their own active leases. Scoped strictly to tenantId = caller.
+async function listLeases(req, res, next) {
+  try {
+    const leases = await Lease.find({ tenantId: req.user.sub })
+      .populate('propertyId', 'title address city')
+      .sort({ createdAt: -1 })
+      .lean();
+    return res.json(leases);
+  } catch (err) {
+    next(err);
+  }
+}
+
 // Internal: create the next billing cycle for an active lease. Called on
 // lease activation and by a scheduled job. Not exposed as a route directly.
 async function generateBillingCycleForLease(lease) {
@@ -198,5 +211,6 @@ module.exports = {
   uploadPaymentProof,
   confirmPayment,
   downloadProof,
+  listLeases,
   generateBillingCycleForLease,
 };
