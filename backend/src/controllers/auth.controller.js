@@ -175,4 +175,62 @@ async function logout(req, res, next) {
   }
 }
 
-module.exports = { register, login, refresh, logout, issueSession };
+// POST /auth/forgot-password
+// Builds the reset link from APP_URL (env config), never from req.headers.host.
+// An attacker who forges the Host header would otherwise redirect the reset link
+// to their own server - a classic host-header attack on password reset flows.
+// Always returns 200 regardless of whether the email exists (prevents enumeration).
+async function forgotPassword(req, res, next) {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email }).select(
+      '+passwordResetTokenHash +passwordResetExpiry'
+    );
+
+    if (user) {
+      const rawToken = user.setPasswordResetToken();
+      await user.save();
+      // In production this URL would go to an email service. Logged to console
+      // in dev so the link is accessible without SMTP setup.
+      const resetUrl = `${env.APP_URL}/reset-password?token=${rawToken}&email=${encodeURIComponent(email)}`;
+      console.log(`[dev] Password reset link: ${resetUrl}`);
+    }
+
+    // Same response whether the email exists or not - caller cannot enumerate.
+    return res.json({ message: 'If that email is registered, a reset link has been sent.' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// POST /auth/reset-password
+// Consumes the single-use token. On success the token is immediately cleared so
+// it cannot be replayed. All existing sessions (refresh cookies) are also
+// invalidated so a password change ends every active session.
+async function resetPassword(req, res, next) {
+  try {
+    const { email, token, password } = req.body;
+
+    const user = await User.findOne({ email }).select(
+      '+passwordHash +passwordResetTokenHash +passwordResetExpiry'
+    );
+
+    if (!user || !user.verifyPasswordResetToken(token)) {
+      return res.status(400).json({ error: 'Invalid or expired password reset link.' });
+    }
+
+    await user.setPassword(password);
+    user.clearPasswordResetToken();
+    // Kill any live sessions - a password change should force re-login everywhere.
+    user.setRefreshToken(null);
+    await user.save();
+
+    clearRefreshCookie(res);
+    return res.json({ message: 'Password updated. Please log in with your new password.' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { register, login, refresh, logout, issueSession, forgotPassword, resetPassword };

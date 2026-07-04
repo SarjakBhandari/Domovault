@@ -23,4 +23,22 @@ const loginSchema = z
   })
   .strict();
 
-module.exports = { registerSchema, loginSchema };
+const forgotPasswordSchema = z
+  .object({
+    email: z.string().trim().toLowerCase().email().max(254),
+  })
+  .strict();
+
+// Token is 32 random bytes rendered as a 64-char hex string.
+// The email is required so we can look up the user without exposing
+// whether any given email exists (we do a constant-time-ish lookup and
+// always return the same success response regardless).
+const resetPasswordSchema = z
+  .object({
+    token: z.string().length(64),
+    email: z.string().trim().toLowerCase().email().max(254),
+    password: z.string().min(12).max(128),
+  })
+  .strict();
+
+module.exports = { registerSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema };

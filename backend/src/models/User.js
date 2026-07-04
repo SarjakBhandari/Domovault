@@ -56,6 +56,11 @@ const userSchema = new mongoose.Schema(
       default: [],
       select: false,
     },
+    // SHA-256 hash of the single-use password-reset token. Never the raw token.
+    // The raw token is returned once to the caller and included in the reset URL.
+    // Expires after 1 hour; consuming it nulls both fields.
+    passwordResetTokenHash: { type: String, default: null, select: false },
+    passwordResetExpiry: { type: Date, default: null, select: false },
   },
   { timestamps: true }
 );
@@ -86,6 +91,27 @@ userSchema.methods.setRefreshToken = function setRefreshToken(token) {
 
 userSchema.methods.matchesRefreshToken = function matchesRefreshToken(token) {
   return Boolean(this.refreshTokenHash) && this.refreshTokenHash === hashToken(token);
+};
+
+// Returns the plaintext token (included once in the reset link URL).
+// Stores only the SHA-256 hash + a 1-hour expiry so a DB leak cannot
+// be used directly to reset passwords.
+userSchema.methods.setPasswordResetToken = function setPasswordResetToken() {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  this.passwordResetTokenHash = hashToken(rawToken);
+  this.passwordResetExpiry = new Date(Date.now() + 60 * 60 * 1000);
+  return rawToken;
+};
+
+userSchema.methods.verifyPasswordResetToken = function verifyPasswordResetToken(rawToken) {
+  if (!this.passwordResetTokenHash || !this.passwordResetExpiry) return false;
+  if (this.passwordResetExpiry < new Date()) return false;
+  return this.passwordResetTokenHash === hashToken(rawToken);
+};
+
+userSchema.methods.clearPasswordResetToken = function clearPasswordResetToken() {
+  this.passwordResetTokenHash = null;
+  this.passwordResetExpiry = null;
 };
 
 userSchema.methods.isLocked = function isLocked() {
@@ -158,6 +184,8 @@ const stripSensitiveFields = (doc, ret) => {
   delete ret.mfaSecretEncrypted;
   delete ret.mfaPendingSecretEncrypted;
   delete ret.mfaBackupCodes;
+  delete ret.passwordResetTokenHash;
+  delete ret.passwordResetExpiry;
   delete ret.__v;
   return ret;
 };
