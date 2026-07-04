@@ -21,4 +21,11 @@ router
   .post(requireAuth, verifyCsrfToken, validateBody(changePasswordSchema), profileController.changePassword)
   .all(methodNotAllowed(['POST']));
 
+// Data export: scoped strictly to the authenticated user's own records.
+// CSRF token required because this is a state-changing, audit-logged action.
+router
+  .route('/export')
+  .get(requireAuth, verifyCsrfToken, profileController.exportData)
+  .all(methodNotAllowed(['GET']));
+
 module.exports = router;

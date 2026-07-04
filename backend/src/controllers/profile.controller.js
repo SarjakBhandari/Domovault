@@ -1,4 +1,8 @@
 const User = require('../models/User');
+const Application = require('../models/Application');
+const Lease = require('../models/Lease');
+const BillingCycle = require('../models/BillingCycle');
+const MaintenanceRequest = require('../models/MaintenanceRequest');
 const { writeAuditLog, ACTIONS } = require('../utils/audit');
 
 // Any logged-in user: get their own profile.
@@ -78,4 +82,50 @@ async function changePassword(req, res, next) {
   }
 }
 
-module.exports = { getProfile, updateProfile, changePassword };
+// Any logged-in user: export their own data as JSON.
+// Only includes records that belong to the requesting user - never includes
+// other users' data (information disclosure prevention).
+// The export intentionally omits passwordHash, MFA secrets, refresh token
+// hash, and all other server-internal security fields via the toJSON transform.
+async function exportData(req, res, next) {
+  try {
+    const userId = req.user.sub;
+
+    const [user, applications, leases, billingCycles, maintenanceRequests] = await Promise.all([
+      User.findById(userId),
+      Application.find({ applicantId: userId }).lean(),
+      Lease.find({ tenantId: userId }).lean(),
+      BillingCycle.find({ tenantId: userId }).select('-paymentProof.storedName').lean(),
+      MaintenanceRequest.find({ tenantId: userId }).lean(),
+    ]);
+
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    await writeAuditLog({
+      actorId: userId,
+      action: ACTIONS.DATA_EXPORTED,
+      targetType: 'User',
+      targetId: userId,
+      metadata: {},
+    });
+
+    const exportPayload = {
+      exportedAt: new Date().toISOString(),
+      profile: user.toJSON(),
+      applications,
+      leases,
+      billingCycles,
+      maintenanceRequests,
+    };
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename="domovault-export.json"');
+    return res.json(exportPayload);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { getProfile, updateProfile, changePassword, exportData };
