@@ -11,8 +11,6 @@ services:
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
     volumes:
       - mongo-data:/data/db
-    # Port NOT published: only the backend (on the internal compose network)
-    # ever talks to Mongo.
     healthcheck:
       test:
         [
@@ -46,10 +44,8 @@ services:
     environment:
       - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/domovault?authSource=admin
       - UPLOAD_DIR=/app/uploads
-      # CORS_ORIGIN is the public HTTPS origin that the browser sees (nginx).
-      # Must use HTTPS now that TLS is terminated by nginx upstream.
-      - CORS_ORIGIN=${CORS_ORIGIN:-https://localhost}
-    # Not published: only the frontend (via the internal network) reaches it.
+      - CORS_ORIGIN=https://localhost
+      - APP_URL=https://localhost
     expose:
       - "4000"
     depends_on:
@@ -71,46 +67,19 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      # TLS certificates - generated once with openssl, mounted read-only.
+      # Replace cert.pem / key.pem with a real CA-signed cert for production.
+      - ./certs:/app/certs:ro
     environment:
       - BACKEND_ORIGIN=http://backend:4000
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
-    # Not published: nginx is the sole ingress point.
-    expose:
-      - "3000"
+    ports:
+      - "443:3000"
     depends_on:
       backend:
         condition: service_started
-
-  nginx:
-    build:
-      context: ./nginx
-    container_name: domovault-nginx
-    restart: unless-stopped
-    init: true
-    security_opt:
-      - no-new-privileges:true
-    cap_drop:
-      - ALL
-    # nginx master runs as root to: bind ports < 1024 (NET_BIND_SERVICE),
-    # chown temp dirs before forking (CHOWN), then workers drop to the nginx
-    # user via setuid/setgid (SETUID + SETGID). All other capabilities dropped.
-    cap_add:
-      - NET_BIND_SERVICE
-      - CHOWN
-      - SETUID
-      - SETGID
-    read_only: true
-    tmpfs:
-      - /var/cache/nginx
-      - /var/run
-      - /tmp
-    ports:
-      - "80:80"
-      - "443:443"
-    depends_on:
-      frontend:
-        condition: service_healthy
 
 volumes:
   mongo-data:

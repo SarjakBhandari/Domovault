@@ -629,25 +629,93 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   }
 
-  // Auth-flow pages: no sidebar, centered layout
+  // No-sidebar pages: landing page gets a full nav header; auth pages get a minimal logo header.
   if (isNoSidebarPage(pathname)) {
+    const isLanding = pathname === '/';
     return (
-      <div className="flex min-h-dvh flex-col bg-slate-50">
+      <div className={`flex min-h-dvh flex-col ${isLanding ? 'bg-white' : 'bg-slate-50'}`}>
         <a
           href="#main-content"
           className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-brand-700 focus:px-4 focus:py-2 focus:text-white"
         >
           Skip to main content
         </a>
-        <div className="border-b border-slate-100 bg-white px-6 py-3">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 rounded-md text-[14px] font-bold tracking-tight text-slate-900 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
-          >
-            <LogoMark size={25} />
-            Domo<span className="text-brand-700">vault</span>
-          </Link>
-        </div>
+
+        {isLanding ? (
+          <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/95 backdrop-blur-sm">
+            <nav
+              aria-label="Primary navigation"
+              className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8"
+            >
+              <Link
+                href="/"
+                className="flex items-center gap-2.5 rounded-lg text-[15px] font-bold tracking-tight text-slate-900 transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
+              >
+                <LogoMark size={27} />
+                Domo<span className="text-brand-700">vault</span>
+              </Link>
+
+              {/* Desktop nav */}
+              <div className="hidden items-center gap-1 md:flex">
+                <Link
+                  href="/browse"
+                  className="rounded-lg px-3.5 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-brand-50 hover:text-brand-800"
+                >
+                  Browse
+                </Link>
+                {!user ? (
+                  <>
+                    <Link
+                      href="/login"
+                      className="rounded-lg px-3.5 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-brand-50 hover:text-brand-800"
+                    >
+                      Log in
+                    </Link>
+                    <Link href="/register" className="btn-primary ml-1">
+                      Register
+                    </Link>
+                  </>
+                ) : (
+                  <Link href="/dashboard" className="btn-primary ml-1">
+                    Dashboard
+                  </Link>
+                )}
+              </div>
+
+              {/* Mobile nav */}
+              <div className="flex items-center gap-2 md:hidden">
+                {!user ? (
+                  <>
+                    <Link
+                      href="/login"
+                      className="rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-brand-700"
+                    >
+                      Log in
+                    </Link>
+                    <Link href="/register" className="btn-primary py-1.5 px-4 text-xs">
+                      Register
+                    </Link>
+                  </>
+                ) : (
+                  <Link href="/dashboard" className="btn-primary py-1.5 px-4 text-xs">
+                    Dashboard
+                  </Link>
+                )}
+              </div>
+            </nav>
+          </header>
+        ) : (
+          <div className="border-b border-slate-100 bg-white px-6 py-3">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 rounded-md text-[14px] font-bold tracking-tight text-slate-900 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
+            >
+              <LogoMark size={25} />
+              Domo<span className="text-brand-700">vault</span>
+            </Link>
+          </div>
+        )}
+
         <main id="main-content" className="flex-1">
           {children}
         </main>
