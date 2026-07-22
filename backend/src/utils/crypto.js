@@ -44,4 +44,15 @@ function decrypt(payload) {
   return plaintext.toString('utf8');
 }
 
-module.exports = { encrypt, decrypt };
+// Deterministic HMAC-SHA256 keyed with the PII encryption key.
+// Used to create indexed lookup hashes for encrypted fields (e.g. OAuth provider ID)
+// without storing the plaintext. Random-IV AES-GCM cannot be used for lookups
+// because the same input produces a different ciphertext each time.
+function hmacField(value) {
+  return crypto
+    .createHmac('sha256', KEY)
+    .update(String(value))
+    .digest('hex');
+}
+
+module.exports = { encrypt, decrypt, hmacField };
