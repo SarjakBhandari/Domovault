@@ -6,35 +6,28 @@ services:
     init: true
     security_opt:
       - no-new-privileges:true
-    # No cap_drop here: the official entrypoint starts as root to chown the
-    # data volume, then steps down to the unprivileged "mongodb" user itself -
-    # dropping capabilities breaks that self-demotion on a fresh volume.
+    # No cap_drop: the official entrypoint starts as root to chown the data
+    # volume then steps down to "mongodb" - dropping caps breaks that on a
+    # fresh volume.
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
     volumes:
       - mongo-data:/data/db
+    # Port NOT published: only the backend (on the internal compose network)
+    # ever talks to Mongo.
     healthcheck:
       test:
         [
-          "CMD",
-          "mongosh",
-          "--quiet",
-          "-u",
-          "${MONGO_ROOT_USERNAME}",
-          "-p",
-          "${MONGO_ROOT_PASSWORD}",
-          "--authenticationDatabase",
-          "admin",
-          "--eval",
-          "db.adminCommand('ping')",
+          "CMD", "mongosh", "--quiet",
+          "-u", "${MONGO_ROOT_USERNAME}",
+          "-p", "${MONGO_ROOT_PASSWORD}",
+          "--authenticationDatabase", "admin",
+          "--eval", "db.adminCommand('ping')",
         ]
       interval: 10s
       timeout: 5s
       retries: 5
-    # Not published to the host: only the backend, on the internal compose
-    # network, ever talks to Mongo. Use `docker compose exec mongo mongosh`
-    # for local inspection instead of opening the port.
 
   backend:
     build:
@@ -49,9 +42,6 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-    # uploads_data is a named volume (not tmpfs) so uploaded files survive
-    # container rebuilds. It mounts at /app/uploads, which is the only path
-    # the process writes to besides /tmp.
     volumes:
       - uploads_data:/app/uploads
     env_file:
@@ -59,11 +49,46 @@ services:
     environment:
       - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/domovault?authSource=admin
       - UPLOAD_DIR=/app/uploads
-    ports:
-      - "4000:4000"
+      # CORS_ORIGIN must match the public-facing frontend origin so the
+      # browser's preflight checks pass. The backend itself is NOT published
+      # to the host - all browser traffic arrives via the Next.js proxy.
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
+    # Port 4000 intentionally NOT published to the host. The frontend
+    # container reaches the backend via the internal "domovault" network only.
+    expose:
+      - "4000"
     depends_on:
       mongo:
         condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Resolved at build time by Next.js rewrites(). Uses the Docker
+        # service name so it works on the internal compose network.
+        - BACKEND_ORIGIN=http://backend:4000
+    container_name: domovault-frontend
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      # Runtime env for the Next.js proxy route (app/api/[...path]/route.ts)
+      # which forwards requests to the backend at server execution time.
+      - BACKEND_ORIGIN=http://backend:4000
+      - NODE_ENV=production
+      - NEXT_TELEMETRY_DISABLED=1
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_started
 
 volumes:
   mongo-data:
