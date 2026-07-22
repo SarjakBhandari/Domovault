@@ -1,60 +1,53 @@
 # Domovault
 
-Secure-by-design home rental management platform. 
+Secure rental management platform. Three roles: admin (landlord), tenant, applicant.
 
+## Quick start
 
-## Architecture
-
-- `backend/` - Express + MongoDB/Mongoose API, runs on its own port, never
-  exposed directly to the browser.
-- `frontend/` - Next.js (App Router) app. Every browser-facing page lives
-  here. `app/api/[...path]/route.ts` proxies all `/api/*` calls to the
-  backend server-side, so the browser only ever talks to one origin.
-
-## Local development
-
-### Backend
+**Requirements:** Node.js 20+, MongoDB
 
 ```
-cd backend
-cp .env.example .env   # fill in real secrets, never commit .env
-npm install
-npm run dev
+# Terminal 1 — backend
+cd backend && npm install && npm run dev
+
+# Terminal 2 — frontend
+cd frontend && npm install && npm run dev
 ```
 
-### Frontend
+Open `http://localhost:3000`.
+
+**Admin login:** `admin1987@local.com` / `admin569!pp+_22355`
+
+If the admin account is missing: `cd backend && node scripts/reset-admin.js`
+
+## Docker
 
 ```
-cd frontend
-cp .env.example .env
-npm install
-npm run dev
+docker compose up --build   # starts Mongo + backend
+cd frontend && npm run dev  # frontend still runs separately
 ```
 
-### Full stack via Docker (backend + MongoDB)
+## Email (local dev)
 
-```
-cp .env.example .env   # root .env: sets Mongo's root username/password
-docker compose up --build
-```
+Emails go to an SMTP server on port 1025. Install [Mailpit](https://mailpit.axllent.org/) to catch them.
 
-The frontend is run separately with `npm run dev` inside `frontend/` and
-talks to the dockerized backend through `BACKEND_ORIGIN` in its own
-`.env`.
+## Roles and pages
 
-## Security notes
+| Role | How to get it | Key pages |
+|---|---|---|
+| Admin | Seeded from `.env` | `/admin`, `/admin/properties`, `/admin/applications`, `/admin/billing`, `/admin/tenants`, `/admin/users`, `/admin/maintenance`, `/admin/audit` |
+| Applicant | Register at `/register` | `/browse`, `/applications`, `/profile`, `/data-export` |
+| Tenant | Promoted by admin | All applicant pages + `/lease`, `/billing`, `/maintenance` |
 
-- JWTs are signed with a single hard-coded algorithm (HS256) everywhere;
-  `jwt.verify()` always passes `algorithms: ['HS256']` explicitly. No route
-  ever calls `jwt.decode()` for a trust decision.
-- Passwords are hashed with Argon2id; the hash is never returned in any API
-  response.
-- Sensitive PII fields are encrypted at rest with AES-256-GCM via
-  `backend/src/utils/crypto.js`.
-- Every state-changing auth request (register/login/refresh/logout) requires
-  a CSRF token (double-submit cookie), fetched from `GET /api/auth/csrf-token`.
-- Every route accepts only its required HTTP method; any other verb returns
-  `405 Method Not Allowed` with an `Allow` header (`src/middleware/methodGuard.js`).
-- Login locks an account after exactly 15 failed attempts, with an escalating
-  cooldown persisted on the user document, plus `express-rate-limit` at the
-  network level.
+## Security
+
+- Argon2id password hashing
+- AES-256-GCM encryption at rest for national ID and MFA secrets
+- HS256 JWT (algorithm hard-coded, never negotiated)
+- CSRF double-submit tokens on all state-changing requests
+- 15-attempt brute-force lockout with escalating cooldown
+- Refresh tokens stored as SHA-256 hashes; reuse detection revokes the session
+- TOTP two-factor authentication with one-time backup codes
+- Rate limiting (30 req/15 min per IP)
+- SSRF protection on outbound fetches
+- Magic-byte file type validation + EXIF stripping on uploads
