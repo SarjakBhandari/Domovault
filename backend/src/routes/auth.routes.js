@@ -5,6 +5,8 @@ const {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  verifyEmailSchema,
+  resendOtpSchema,
 } = require('../validators/auth.validators');
 const validateBody = require('../middleware/validateBody');
 const methodNotAllowed = require('../middleware/methodGuard');
@@ -50,6 +52,16 @@ router
 router
   .route('/reset-password')
   .post(authRateLimiter, verifyCsrfToken, validateBody(resetPasswordSchema), authController.resetPassword)
+  .all(methodNotAllowed(['POST']));
+
+router
+  .route('/verify-email')
+  .post(authRateLimiter, verifyCsrfToken, validateBody(verifyEmailSchema), authController.verifyEmail)
+  .all(methodNotAllowed(['POST']));
+
+router
+  .route('/resend-otp')
+  .post(authRateLimiter, verifyCsrfToken, validateBody(resendOtpSchema), authController.resendOtp)
   .all(methodNotAllowed(['POST']));
 
 module.exports = router;

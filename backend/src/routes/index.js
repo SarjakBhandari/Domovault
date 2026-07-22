@@ -5,10 +5,11 @@ const mfaRoutes = require('./mfa.routes');
 const propertyRoutes = require('./property.routes');
 const applicationRoutes = require('./application.routes');
 const profileRoutes = require('./profile.routes');
-const messagingRoutes = require('./messaging.routes');
 const maintenanceRoutes = require('./maintenance.routes');
 const billingRoutes = require('./billing.routes');
 const adminRoutes = require('./admin.routes');
+const messagingRoutes = require('./messaging.routes');
+const oauthRoutes = require('./oauth.routes');
 
 const router = express.Router();
 
@@ -18,9 +19,10 @@ router.use('/mfa', mfaRoutes);
 router.use('/properties', propertyRoutes);
 router.use('/applications', applicationRoutes);
 router.use('/profile', profileRoutes);
-router.use('/messaging', messagingRoutes);
 router.use('/maintenance', maintenanceRoutes);
 router.use('/billing', billingRoutes);
 router.use('/admin', adminRoutes);
+router.use('/messages', messagingRoutes);
+router.use('/auth/oauth', oauthRoutes);
 
 module.exports = router;
