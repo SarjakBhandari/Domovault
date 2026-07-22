@@ -1,43 +1,118 @@
 const mongoose = require('mongoose');
 const Message = require('../models/Message');
-const Property = require('../models/Property');
-const { sanitizePlainText } = require('../utils/sanitize');
+const User = require('../models/User');
 
-// Returns all conversations (unique property+partner pairs) for the caller.
+// Build the canonical conversation ID from two user IDs. The smaller
+// string-comparison ID is always first so both parties reference the same key.
+function conversationId(a, b) {
+  return a.toString() < b.toString()
+    ? `${a}_${b}`
+    : `${b}_${a}`;
+}
+
+// Send a message. Only admin-tenant pairs are allowed: a tenant can only
+// message an admin and vice versa. IDOR check: the recipient must exist and
+// have the expected role.
+async function sendMessage(req, res, next) {
+  try {
+    const { recipientId, body } = req.body;
+    const senderId = req.user.sub;
+
+    if (recipientId === senderId) {
+      return res.status(400).json({ error: 'Cannot send a message to yourself' });
+    }
+
+    const recipient = await User.findById(recipientId).select('role');
+    if (!recipient) {
+      return res.status(404).json({ error: 'Recipient not found' });
+    }
+
+    // Enforce admin-tenant-only communication.
+    const senderRole = req.user.role;
+    const recipientRole = recipient.role;
+    const allowed =
+      (senderRole === 'tenant' && recipientRole === 'admin') ||
+      (senderRole === 'admin' && recipientRole === 'tenant');
+    if (!allowed) {
+      return res.status(403).json({ error: 'Messaging is only available between admin and tenant' });
+    }
+
+    const cid = conversationId(senderId, recipientId);
+    const message = await Message.create({
+      conversationId: cid,
+      senderId,
+      recipientId,
+      body,
+    });
+
+    return res.status(201).json(message);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Get all messages in a conversation between the current user and another user.
+// Only returns messages where one of the parties is the current user (IDOR
+// prevention  -  the conversationId is derived server-side from the two user IDs,
+// never accepted from the client).
+async function getConversation(req, res, next) {
+  try {
+    const myId = req.user.sub;
+    const otherId = req.params.userId;
+
+    if (!mongoose.Types.ObjectId.isValid(otherId)) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const other = await User.findById(otherId).select('fullName role avatarStoredName');
+    if (!other) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const cid = conversationId(myId, otherId);
+    const messages = await Message.find({ conversationId: cid })
+      .sort({ createdAt: 1 })
+      .lean();
+
+    // Mark all unread messages addressed to the current user as read.
+    await Message.updateMany(
+      { conversationId: cid, recipientId: myId, read: false },
+      { read: true }
+    );
+
+    return res.json({ messages, other: other.toJSON() });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// List all conversations the current user participates in, with the latest
+// message and unread count. The query uses the conversationId index.
 async function listConversations(req, res, next) {
   try {
-    const userId = new mongoose.Types.ObjectId(req.user.sub);
+    const myId = req.user.sub;
 
-    // Aggregate to get the latest message per (propertyId, partner) pair.
+    // Find the latest message in every conversation this user is part of.
     const conversations = await Message.aggregate([
       {
-        $match: { $or: [{ senderId: userId }, { receiverId: userId }] },
+        $match: {
+          $or: [
+            { senderId: new mongoose.Types.ObjectId(myId) },
+            { recipientId: new mongoose.Types.ObjectId(myId) },
+          ],
+        },
       },
       {
         $sort: { createdAt: -1 },
       },
       {
         $group: {
-          _id: {
-            propertyId: '$propertyId',
-            partner: {
-              $cond: {
-                if: { $eq: ['$senderId', userId] },
-                then: '$receiverId',
-                else: '$senderId',
-              },
-            },
-          },
+          _id: '$conversationId',
           latestMessage: { $first: '$$ROOT' },
           unreadCount: {
             $sum: {
               $cond: [
-                {
-                  $and: [
-                    { $eq: ['$receiverId', userId] },
-                    { $eq: ['$readAt', null] },
-                  ],
-                },
+                { $and: [{ $eq: ['$recipientId', new mongoose.Types.ObjectId(myId)] }, { $eq: ['$read', false] }] },
                 1,
                 0,
               ],
@@ -48,82 +123,25 @@ async function listConversations(req, res, next) {
       { $sort: { 'latestMessage.createdAt': -1 } },
     ]);
 
-    return res.json(conversations);
-  } catch (err) {
-    next(err);
-  }
-}
-
-// Returns all messages in a conversation about a specific property between
-// the caller and one other participant. Access control: only the two
-// participants can see the thread.
-async function getConversation(req, res, next) {
-  try {
-    const { propertyId, partnerId } = req.params;
-    const userId = req.user.sub;
-
-    const messages = await Message.find({
-      propertyId,
-      $or: [
-        { senderId: userId, receiverId: partnerId },
-        { senderId: partnerId, receiverId: userId },
-      ],
-    })
-      .sort({ createdAt: 1 })
-      .lean();
-
-    // Mark unread messages as read.
-    await Message.updateMany(
-      { propertyId, receiverId: userId, senderId: partnerId, readAt: null },
-      { $set: { readAt: new Date() } }
+    // Populate the other participant's name for each conversation.
+    const populated = await Promise.all(
+      conversations.map(async (conv) => {
+        const msg = conv.latestMessage;
+        const otherId = msg.senderId.toString() === myId ? msg.recipientId : msg.senderId;
+        const other = await User.findById(otherId).select('fullName role avatarStoredName').lean();
+        return {
+          conversationId: conv._id,
+          other,
+          latestMessage: { body: msg.body, createdAt: msg.createdAt, senderId: msg.senderId },
+          unreadCount: conv.unreadCount,
+        };
+      })
     );
 
-    return res.json(messages);
+    return res.json(populated);
   } catch (err) {
     next(err);
   }
 }
 
-// Send a message. The receiver must be either the property owner (for
-// applicants/tenants) or a known applicant/tenant (for admins). This prevents
-// arbitrary messaging between unrelated users.
-async function sendMessage(req, res, next) {
-  try {
-    const { propertyId } = req.params;
-    const { receiverId, content } = req.body;
-    const senderId = req.user.sub;
-
-    const property = await Property.findById(propertyId);
-    if (!property) {
-      return res.status(404).json({ error: 'Property not found' });
-    }
-
-    // An applicant or tenant can only message the property owner.
-    // An admin can only message users on their own properties.
-    const isAdmin = req.user.role === 'admin';
-    if (isAdmin) {
-      if (property.ownerId.toString() !== senderId) {
-        return res.status(403).json({ error: 'You do not own this property' });
-      }
-    } else {
-      if (receiverId !== property.ownerId.toString()) {
-        return res.status(403).json({ error: 'You can only message the property owner' });
-      }
-    }
-
-    // Sanitize on save: strip all HTML tags from message content (messages are
-    // plain text, not rich text, so all markup is unwanted).
-    const message = await Message.create({
-      propertyId,
-      senderId,
-      receiverId,
-      content: sanitizePlainText(content),
-    });
-
-    return res.status(201).json(message);
-  } catch (err) {
-    next(err);
-  }
-}
-
-module.exports = { listConversations, getConversation, sendMessage };
+module.exports = { sendMessage, getConversation, listConversations };

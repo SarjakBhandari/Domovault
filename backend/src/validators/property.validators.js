@@ -46,9 +46,26 @@ const importPhotoSchema = z
   })
   .strict();
 
+const otherBillSchema = z.object({
+  label: z.string().trim().min(1, 'Label is required').max(100),
+  amount: z.coerce.number().min(0, 'Amount must be 0 or more').max(99999),
+});
+
+const updatePaymentDetailsSchema = z
+  .object({
+    electricityCharge: z.coerce.number().min(0).max(99999).nullable().optional(),
+    waterBill: z.coerce.number().min(0).max(99999).nullable().optional(),
+    otherBills: z.array(otherBillSchema).max(10, 'At most 10 other bills allowed').optional(),
+    bankAccountName: z.string().trim().max(100).nullable().optional(),
+    bankAccountNumber: z.string().trim().regex(/^\d{8}$/, 'Account number must be exactly 8 digits').nullable().optional(),
+    bankSortCode: z.string().trim().regex(/^\d{2}-\d{2}-\d{2}$/, 'Sort code must be in format 12-34-56').nullable().optional(),
+  })
+  .strict();
+
 module.exports = {
   createPropertySchema,
   updatePropertySchema,
   propertySearchSchema,
   importPhotoSchema,
+  updatePaymentDetailsSchema,
 };

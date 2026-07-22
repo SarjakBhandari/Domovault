@@ -5,8 +5,6 @@ const multer = require('multer');
 const sharp = require('sharp');
 const env = require('../config/env');
 
-// file-type v22 is ESM-only; we use a cached dynamic import so the load
-// happens once rather than on every request.
 let fileTypeFromBuffer;
 async function getFileTypeFromBuffer() {
   if (!fileTypeFromBuffer) {
@@ -21,10 +19,11 @@ async function getFileTypeFromBuffer() {
 // checked instead. If the detected MIME does not match the allow-list, the
 // file is rejected and never written to disk.
 const ALLOWED_MIMES = {
-  document: ['application/pdf', 'image/jpeg', 'image/png'],
+  document: ['image/jpeg', 'image/png', 'image/webp'],
   photo: ['image/jpeg', 'image/png', 'image/webp'],
   qrcode: ['image/jpeg', 'image/png'],
-  proof: ['image/jpeg', 'image/png', 'application/pdf'],
+  proof: ['image/jpeg', 'image/png', 'image/webp'],
+  avatar: ['image/jpeg', 'image/png', 'image/webp'],
 };
 
 const SUBDIR_BY_CATEGORY = {
@@ -32,6 +31,7 @@ const SUBDIR_BY_CATEGORY = {
   photo: 'photos',
   qrcode: 'qrcodes',
   proof: 'proofs',
+  avatar: 'avatars',
 };
 
 // Image MIME types that are re-encoded through sharp to strip all EXIF
@@ -96,8 +96,6 @@ function createUploadMiddleware(category) {
       await fs.mkdir(destDir, { recursive: true });
       await fs.writeFile(destPath, outputBuffer);
 
-      // Replace the multer file object with enriched metadata for the
-      // controller to persist in the database.
       req.uploadedFile = {
         storedName,
         mimeType: detected.mime,
@@ -110,9 +108,17 @@ function createUploadMiddleware(category) {
   ];
 }
 
+const EXT_TO_MIME = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  pdf: 'application/pdf',
+};
+
 // Serve a file from the upload directory after the controller has verified
 // ownership. Path is constructed entirely server-side from the DB record;
-// the client never supplies a file path.
+// the client never supplies a file path. mimeType is optional  -  derived from
+// the stored filename extension when omitted.
 async function serveUploadedFile(res, storedName, subdir, mimeType) {
   const destDir = path.resolve(env.UPLOAD_DIR, subdir);
   const filePath = path.join(destDir, storedName);
@@ -124,10 +130,15 @@ async function serveUploadedFile(res, storedName, subdir, mimeType) {
     throw err;
   }
 
-  res.setHeader('Content-Type', mimeType);
-  // Content-Disposition: attachment forces download rather than inline render,
-  // which removes the browser's ability to interpret the file as HTML/JS.
-  res.setHeader('Content-Disposition', `attachment; filename="download.${storedName.split('.').pop()}"`);
+  const ext = (storedName.split('.').pop() ?? '').toLowerCase();
+  const resolvedMime = mimeType ?? EXT_TO_MIME[ext] ?? 'application/octet-stream';
+
+  res.setHeader('Content-Type', resolvedMime);
+  const safeInline = IMAGE_MIMES.has(resolvedMime) || resolvedMime === 'application/pdf';
+  res.setHeader(
+    'Content-Disposition',
+    safeInline ? `inline; filename="file.${ext}"` : `attachment; filename="download.${ext}"`
+  );
 
   const fileBuffer = await fs.readFile(filePath);
   res.send(fileBuffer);

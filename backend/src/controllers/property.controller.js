@@ -1,26 +1,26 @@
 const mongoose = require('mongoose');
 const Property = require('../models/Property');
+const Lease = require('../models/Lease');
 const { sanitize } = require('../utils/sanitize');
 const { safeFetch } = require('../utils/ssrf');
 const { writeAuditLog, ACTIONS } = require('../utils/audit');
 const { serveUploadedFile, SUBDIR_BY_CATEGORY } = require('../middleware/upload');
+const { encrypt, decrypt } = require('../utils/crypto');
 
 const PAGE_LIMIT_MAX = 50;
 
-// Public: search/filter properties. Uses Zod-coerced query params (never raw
-// user strings in Mongoose operators) so there is no NoSQL injection surface.
-async function listProperties(req, res, next) {
+async function searchProperties(req, res, next) {
   try {
-    const { city, maxRent, minRent, bedrooms, query, page, limit } = req.query;
-    const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.min(PAGE_LIMIT_MAX, Math.max(1, parseInt(limit, 10) || 12));
+    const { city, maxRent, minRent, bedrooms, query, page, limit } = req.body;
+    const pageNum = Math.max(1, page || 1);
+    const limitNum = Math.min(PAGE_LIMIT_MAX, Math.max(1, limit || 12));
     const skip = (pageNum - 1) * limitNum;
 
     const filter = { status: 'available' };
     if (city) filter.city = { $regex: new RegExp(`^${escapeRegex(city)}$`, 'i') };
-    if (typeof maxRent === 'string') filter.rentPerMonth = { ...filter.rentPerMonth, $lte: Number(maxRent) };
-    if (typeof minRent === 'string') filter.rentPerMonth = { ...filter.rentPerMonth, $gte: Number(minRent) };
-    if (typeof bedrooms === 'string') filter.bedrooms = Number(bedrooms);
+    if (maxRent !== undefined) filter.rentPerMonth = { ...filter.rentPerMonth, $lte: maxRent };
+    if (minRent !== undefined) filter.rentPerMonth = { ...filter.rentPerMonth, $gte: minRent };
+    if (bedrooms !== undefined) filter.bedrooms = bedrooms;
     if (query) {
       const escaped = escapeRegex(query);
       filter.$or = [
@@ -46,7 +46,6 @@ async function listProperties(req, res, next) {
   }
 }
 
-// Public: single property detail.
 async function getProperty(req, res, next) {
   try {
     const property = await Property.findById(req.params.id).select('-qrCodeStoredName').lean();
@@ -173,8 +172,6 @@ async function importPhoto(req, res, next) {
       return res.status(400).json({ error: 'Could not fetch image from the provided URL' });
     }
 
-    // Only the URL is stored (not the image itself), to keep the upload
-    // pipeline simple. Production would download and store the image locally.
     property.imageUrl = imageUrl;
     await property.save();
 
@@ -208,7 +205,6 @@ async function uploadQrCode(req, res, next) {
   }
 }
 
-// Admin-only: list own properties.
 async function listOwnProperties(req, res, next) {
   try {
     const properties = await Property.find({ ownerId: req.user.sub }).sort({ createdAt: -1 }).lean();
@@ -233,14 +229,135 @@ async function getQrCode(req, res, next) {
   }
 }
 
-// Escapes regex special characters so user input used in $regex operators
-// cannot alter the query semantics (e.g. inject .* to broaden the match).
+async function uploadPropertyImage(req, res, next) {
+  try {
+    const property = await Property.findOne({ _id: req.params.id, ownerId: req.user.sub });
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+    if (!req.uploadedFile) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    property.imageStoredName = req.uploadedFile.storedName;
+    await property.save();
+    return res.json({ message: 'Image uploaded' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function servePropertyImage(req, res, next) {
+  try {
+    const property = await Property.findById(req.params.id).lean();
+    if (!property || !property.imageStoredName) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+    await serveUploadedFile(res, property.imageStoredName, SUBDIR_BY_CATEGORY.photo);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Admin-only: set payment details for a property (bank info + bill breakdown).
+// Bank account number and sort code are encrypted with AES-256-GCM.
+async function updatePaymentDetails(req, res, next) {
+  try {
+    const property = await Property.findOne({ _id: req.params.id, ownerId: req.user.sub })
+      .select('+paymentDetails.bankAccountNumberEncrypted +paymentDetails.bankSortCodeEncrypted');
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    const { electricityCharge, waterBill, otherBills, bankAccountName, bankAccountNumber, bankSortCode } = req.body;
+
+    if (!property.paymentDetails) property.paymentDetails = {};
+
+    if (electricityCharge !== undefined) property.paymentDetails.electricityCharge = electricityCharge;
+    if (waterBill !== undefined) property.paymentDetails.waterBill = waterBill;
+    if (otherBills !== undefined) property.paymentDetails.otherBills = otherBills;
+    if (bankAccountName !== undefined) property.paymentDetails.bankAccountName = bankAccountName;
+    if (bankAccountNumber !== undefined) {
+      property.paymentDetails.bankAccountNumberEncrypted = bankAccountNumber ? encrypt(bankAccountNumber) : null;
+    }
+    if (bankSortCode !== undefined) {
+      property.paymentDetails.bankSortCodeEncrypted = bankSortCode ? encrypt(bankSortCode) : null;
+    }
+
+    property.markModified('paymentDetails');
+    await property.save();
+
+    return res.json({ message: 'Payment details updated' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Tenant-only: get payment details for a property they are actively leasing.
+// Decrypts bank account fields before returning.
+async function getPaymentDetails(req, res, next) {
+  try {
+    const lease = await Lease.findOne({
+      propertyId: req.params.id,
+      tenantId: req.user.sub,
+      status: 'active',
+    });
+    if (!lease) {
+      return res.status(403).json({ error: 'You do not have an active lease for this property' });
+    }
+
+    const property = await Property.findById(req.params.id)
+      .select('paymentDetails rentPerMonth title +paymentDetails.bankAccountNumberEncrypted +paymentDetails.bankSortCodeEncrypted');
+    if (!property) {
+      return res.status(404).json({ error: 'Property not found' });
+    }
+
+    const pd = property.paymentDetails || {};
+    const result = {
+      rentPerMonth: property.rentPerMonth,
+      electricityCharge: pd.electricityCharge ?? null,
+      waterBill: pd.waterBill ?? null,
+      otherBills: pd.otherBills ?? [],
+      bankAccountName: pd.bankAccountName ?? null,
+      bankAccountNumber: pd.bankAccountNumberEncrypted ? decrypt(pd.bankAccountNumberEncrypted) : null,
+      bankSortCode: pd.bankSortCodeEncrypted ? decrypt(pd.bankSortCodeEncrypted) : null,
+    };
+
+    return res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Tenant-only: download the QR code for a property they are actively leasing.
+async function downloadQrCode(req, res, next) {
+  try {
+    const lease = await Lease.findOne({
+      propertyId: req.params.id,
+      tenantId: req.user.sub,
+      status: 'active',
+    });
+    if (!lease) {
+      return res.status(403).json({ error: 'You do not have an active lease for this property' });
+    }
+
+    const property = await Property.findById(req.params.id).select('+qrCodeStoredName');
+    if (!property || !property.qrCodeStoredName) {
+      return res.status(404).json({ error: 'QR code not found for this property' });
+    }
+
+    await serveUploadedFile(res, property.qrCodeStoredName, SUBDIR_BY_CATEGORY.qrcode, 'image/png');
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Prevents $regex injection: user input cannot alter query semantics (e.g. inject .* to broaden the match).
 function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 module.exports = {
-  listProperties,
+  searchProperties,
   getProperty,
   createProperty,
   updateProperty,
@@ -249,4 +366,9 @@ module.exports = {
   uploadQrCode,
   listOwnProperties,
   getQrCode,
+  uploadPropertyImage,
+  servePropertyImage,
+  updatePaymentDetails,
+  getPaymentDetails,
+  downloadQrCode,
 };

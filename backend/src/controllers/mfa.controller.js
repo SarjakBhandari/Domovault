@@ -5,7 +5,6 @@ const User = require('../models/User');
 const env = require('../config/env');
 const { verifyMfaChallengeToken } = require('../utils/jwt');
 const { recordFailedAttempt } = require('../utils/lockout');
-const { verifyCaptcha } = require('../utils/captcha');
 const { issueSession } = require('./auth.controller');
 
 const BACKUP_CODE_COUNT = 10;
@@ -129,7 +128,7 @@ async function isValidMfaCode(user, code) {
 // 15-attempt lockout as a wrong password.
 async function verifyMfa(req, res, next) {
   try {
-    const { mfaToken, code, captchaToken } = req.body;
+    const { mfaToken, code } = req.body;
 
     let payload;
     try {
@@ -152,20 +151,6 @@ async function verifyMfa(req, res, next) {
         error: 'Account temporarily locked due to repeated failed attempts',
         retryAfterSeconds,
       });
-    }
-
-    // Wrong codes increment the same counter as wrong passwords (see
-    // auth.controller.js login()), so the same CAPTCHA gate applies here -
-    // otherwise an attacker who already has a valid mfaToken could grind
-    // codes without ever tripping the password-side CAPTCHA check.
-    if (user.failedLoginAttempts >= env.CAPTCHA_TRIGGER_THRESHOLD) {
-      const captchaValid = await verifyCaptcha(captchaToken);
-      if (!captchaValid) {
-        return res.status(400).json({
-          error: 'CAPTCHA verification required',
-          captchaRequired: true,
-        });
-      }
     }
 
     const codeValid = await isValidMfaCode(user, code);
