@@ -1,42 +1,50 @@
 const crypto = require('crypto');
 const env = require('../config/env');
 
-const COOKIE_NAME = 'csrfToken';
 const HEADER_NAME = 'x-csrf-token';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const SEP = '.';
 
-// Double-submit cookie pattern, applied to every mutating route including
-// login/register/refresh/logout - not just the "later" forms. A cross-site
-// page can make the browser send the cookie automatically, but it cannot
-// read the cookie's value (blocked by same-origin policy) to put it in the
-// X-CSRF-Token header, so a forged request fails this check even though the
-// browser attaches the session cookie.
+function sign(token) {
+  return crypto
+    .createHmac('sha256', env.JWT_ACCESS_SECRET)
+    .update(token)
+    .digest('hex');
+}
+
 function issueCsrfToken(req, res) {
   const token = crypto.randomBytes(32).toString('hex');
-
-  res.cookie(COOKIE_NAME, token, {
-    httpOnly: false,
-    secure: env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 60 * 60 * 1000,
-  });
-
-  res.json({ csrfToken: token });
+  res.json({ csrfToken: token + SEP + sign(token) });
 }
 
 function verifyCsrfToken(req, res, next) {
-  if (SAFE_METHODS.has(req.method)) {
-    return next();
+  if (SAFE_METHODS.has(req.method)) return next();
+
+  const header = req.get(HEADER_NAME) || '';
+  const dot = header.lastIndexOf(SEP);
+  if (dot === -1) {
+    return res.status(403).json({ error: 'Missing CSRF token' });
   }
 
-  const cookieToken = req.cookies?.[COOKIE_NAME];
-  const headerToken = req.get(HEADER_NAME);
+  const token = header.slice(0, dot);
+  const sig = header.slice(dot + 1);
+  const expected = sign(token);
 
-  if (!cookieToken || !headerToken || cookieToken !== headerToken) {
-    return res.status(403).json({ error: 'Invalid or missing CSRF token' });
+  let valid = false;
+  try {
+    valid = crypto.timingSafeEqual(
+      Buffer.from(sig, 'hex'),
+      Buffer.from(expected, 'hex')
+    );
+  } catch {
+    valid = false;
+  }
+
+  if (!valid) {
+    return res.status(403).json({ error: 'Invalid CSRF token' });
   }
 
   next();
 }
 
-module.exports = { issueCsrfToken, verifyCsrfToken, COOKIE_NAME, HEADER_NAME };
+module.exports = { issueCsrfToken, verifyCsrfToken };
