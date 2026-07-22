@@ -29,15 +29,10 @@ ENV NODE_ENV=production \
 COPY --from=builder --chown=node:node /app/.next/standalone ./
 COPY --from=builder --chown=node:node /app/.next/static ./.next/static
 
-# HTTPS wrapper. TLS certificates are mounted at /app/certs at runtime via
-# docker-compose (see ../docker-compose.yml). Replace cert.pem / key.pem with
-# a real CA-signed certificate for production.
-COPY --chown=node:node server-https.js ./
-
 USER node
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD node -e "process.env.NODE_TLS_REJECT_UNAUTHORIZED='0';fetch('https://localhost:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://localhost:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 
-CMD ["node", "server-https.js"]
+CMD ["node", "server.js"]

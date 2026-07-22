@@ -44,8 +44,8 @@ services:
     environment:
       - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/domovault?authSource=admin
       - UPLOAD_DIR=/app/uploads
-      - CORS_ORIGIN=https://localhost
-      - APP_URL=https://localhost
+      - CORS_ORIGIN=http://localhost:3000
+      - APP_URL=http://localhost:3000
     expose:
       - "4000"
     depends_on:
@@ -67,16 +67,12 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-    volumes:
-      # TLS certificates - generated once with openssl, mounted read-only.
-      # Replace cert.pem / key.pem with a real CA-signed cert for production.
-      - ./certs:/app/certs:ro
     environment:
       - BACKEND_ORIGIN=http://backend:4000
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
     ports:
-      - "443:3000"
+      - "3000:3000"
     depends_on:
       backend:
         condition: service_started
