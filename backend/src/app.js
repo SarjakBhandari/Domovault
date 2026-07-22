@@ -5,6 +5,7 @@ const cookieParser = require('cookie-parser');
 const mongoSanitize = require('express-mongo-sanitize');
 const env = require('./config/env');
 const routes = require('./routes');
+const { generalRateLimiter } = require('./middleware/rateLimit');
 const notFound = require('./middleware/notFound');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -34,8 +35,7 @@ app.use(
         objectSrc: ["'none'"],
         mediaSrc: ["'none'"],
         frameSrc: ["'none'"],
-        // The backend API never serves HTML - these directives are as tight
-        // as possible. The Next.js frontend has its own CSP via next.config.
+        // The backend API never serves HTML  -  these directives are as tight as possible.
       },
       reportOnly: false,
     },
@@ -67,6 +67,11 @@ app.use(cookieParser());
 // not in the schema), there is no path for raw user input to become a query
 // operator.
 app.use(mongoSanitize());
+
+// Global IP-level rate limiter. Auth endpoints get a separate, tighter
+// limiter via authRateLimiter in their route files. Both are skipped in
+// NODE_ENV=test and configurable via RATE_LIMIT_* env vars.
+app.use(generalRateLimiter);
 
 app.use('/api', routes);
 
