@@ -45,7 +45,22 @@ export default async function HomePage() {
               <SearchForm />
             </div>
 
-            <div className="mt-8 flex flex-wrap gap-x-8 gap-y-3">
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href="/login"
+                className="rounded-xl bg-white px-6 py-3 text-sm font-semibold text-brand-800 shadow-sm transition-colors hover:bg-brand-50"
+              >
+                Log in
+              </Link>
+              <Link
+                href="/register"
+                className="rounded-xl border border-brand-400 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-600/50"
+              >
+                Create account
+              </Link>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-x-8 gap-y-3">
               {STATS.map((stat) => (
                 <div key={stat.label} className="flex items-center gap-2">
                   <span className="text-sm font-bold text-white">{stat.value}</span>

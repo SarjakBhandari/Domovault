@@ -6,9 +6,6 @@ services:
     init: true
     security_opt:
       - no-new-privileges:true
-    # No cap_drop: the official entrypoint starts as root to chown the data
-    # volume then steps down to "mongodb" - dropping caps breaks that on a
-    # fresh volume.
     environment:
       - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USERNAME}
       - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
@@ -49,12 +46,10 @@ services:
     environment:
       - MONGODB_URI=mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@mongo:27017/domovault?authSource=admin
       - UPLOAD_DIR=/app/uploads
-      # CORS_ORIGIN must match the public-facing frontend origin so the
-      # browser's preflight checks pass. The backend itself is NOT published
-      # to the host - all browser traffic arrives via the Next.js proxy.
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
-    # Port 4000 intentionally NOT published to the host. The frontend
-    # container reaches the backend via the internal "domovault" network only.
+      # CORS_ORIGIN is the public HTTPS origin that the browser sees (nginx).
+      # Must use HTTPS now that TLS is terminated by nginx upstream.
+      - CORS_ORIGIN=${CORS_ORIGIN:-https://localhost}
+    # Not published: only the frontend (via the internal network) reaches it.
     expose:
       - "4000"
     depends_on:
@@ -65,8 +60,6 @@ services:
     build:
       context: ./frontend
       args:
-        # Resolved at build time by Next.js rewrites(). Uses the Docker
-        # service name so it works on the internal compose network.
         - BACKEND_ORIGIN=http://backend:4000
     container_name: domovault-frontend
     restart: unless-stopped
@@ -79,16 +72,45 @@ services:
     tmpfs:
       - /tmp
     environment:
-      # Runtime env for the Next.js proxy route (app/api/[...path]/route.ts)
-      # which forwards requests to the backend at server execution time.
       - BACKEND_ORIGIN=http://backend:4000
       - NODE_ENV=production
       - NEXT_TELEMETRY_DISABLED=1
-    ports:
-      - "3000:3000"
+    # Not published: nginx is the sole ingress point.
+    expose:
+      - "3000"
     depends_on:
       backend:
         condition: service_started
+
+  nginx:
+    build:
+      context: ./nginx
+    container_name: domovault-nginx
+    restart: unless-stopped
+    init: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # nginx master runs as root to: bind ports < 1024 (NET_BIND_SERVICE),
+    # chown temp dirs before forking (CHOWN), then workers drop to the nginx
+    # user via setuid/setgid (SETUID + SETGID). All other capabilities dropped.
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - SETUID
+      - SETGID
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      frontend:
+        condition: service_healthy
 
 volumes:
   mongo-data:
