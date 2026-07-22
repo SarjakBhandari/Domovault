@@ -10,13 +10,14 @@ const { writeAuditLog, ACTIONS } = require('../utils/audit');
 // actor ID, action string, target reference, and minimal summary metadata.
 async function listAuditLogs(req, res, next) {
   try {
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const { page: rawPage, limit: rawLimit, action, actorId } = req.body ?? {};
+    const page = Math.max(1, parseInt(rawPage, 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(rawLimit, 10) || 50));
     const skip = (page - 1) * limit;
 
     const filter = {};
-    if (req.query.action) filter.action = req.query.action;
-    if (req.query.actorId) filter.actorId = req.query.actorId;
+    if (action) filter.action = action;
+    if (actorId) filter.actorId = actorId;
 
     const [total, logs] = await Promise.all([
       AuditLog.countDocuments(filter),
@@ -136,4 +137,86 @@ async function bulkImportProperties(req, res, next) {
   }
 }
 
-module.exports = { listAuditLogs, getDashboardStats, bulkImportProperties };
+// Admin-only: list all non-admin users. Never returns passwordHash or
+// other security-sensitive fields (toJSON transform strips them).
+async function listUsers(req, res, next) {
+  try {
+    const users = await User.find({ role: { $in: ['applicant', 'tenant'] } })
+      .sort({ createdAt: -1 })
+      .lean();
+    return res.json(users);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Admin-only: permanently delete a user account. Cannot delete admins.
+// Ends the user's active leases before removing the document.
+async function deleteUser(req, res, next) {
+  try {
+    const target = await User.findById(req.params.id);
+    if (!target) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (target.role === 'admin') {
+      return res.status(403).json({ error: 'Admin accounts cannot be deleted' });
+    }
+
+    const Lease = require('../models/Lease');
+    await Lease.updateMany({ tenantId: target._id, status: 'active' }, { status: 'ended', endDate: new Date() });
+
+    await writeAuditLog({
+      actorId: req.user.sub,
+      action: ACTIONS.USER_DELETED,
+      targetType: 'User',
+      targetId: target._id,
+      metadata: { role: target.role, email: target.email },
+    });
+
+    await User.deleteOne({ _id: target._id });
+
+    return res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Admin-only: remove a tenant  -  ends their active lease and downgrades
+// their role back to applicant. Does not delete the account.
+async function removeTenant(req, res, next) {
+  try {
+    const Lease = require('../models/Lease');
+
+    const target = await User.findById(req.params.id);
+    if (!target) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    if (target.role !== 'tenant') {
+      return res.status(400).json({ error: 'User is not a tenant' });
+    }
+
+    // End active leases owned by this admin for this tenant (IDOR: only leases
+    // owned by the requesting admin are ended).
+    await Lease.updateMany(
+      { tenantId: target._id, ownerId: req.user.sub, status: 'active' },
+      { status: 'ended', endDate: new Date() }
+    );
+
+    target.role = 'applicant';
+    await target.save();
+
+    await writeAuditLog({
+      actorId: req.user.sub,
+      action: ACTIONS.TENANT_REMOVED,
+      targetType: 'User',
+      targetId: target._id,
+      metadata: {},
+    });
+
+    return res.json({ role: target.role });
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { listAuditLogs, getDashboardStats, bulkImportProperties, listUsers, deleteUser, removeTenant };

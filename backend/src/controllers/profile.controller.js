@@ -4,6 +4,7 @@ const Lease = require('../models/Lease');
 const BillingCycle = require('../models/BillingCycle');
 const MaintenanceRequest = require('../models/MaintenanceRequest');
 const { writeAuditLog, ACTIONS } = require('../utils/audit');
+const { serveUploadedFile, SUBDIR_BY_CATEGORY } = require('../middleware/upload');
 
 // Any logged-in user: get their own profile.
 async function getProfile(req, res, next) {
@@ -128,4 +129,77 @@ async function exportData(req, res, next) {
   }
 }
 
-module.exports = { getProfile, updateProfile, changePassword, exportData };
+// Any logged-in user: upload their own profile picture.
+async function uploadAvatar(req, res, next) {
+  try {
+    if (!req.uploadedFile) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    const user = await User.findById(req.user.sub);
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+    user.avatarStoredName = req.uploadedFile.storedName;
+    await user.save();
+    return res.json({ message: 'Avatar updated' });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Public: serve a user's avatar by userId. No auth needed  -  profile pictures
+// are not sensitive and browser <img> tags cannot send Bearer headers.
+async function serveAvatar(req, res, next) {
+  try {
+    const userId = req.params.userId;
+    if (!userId) {
+      return res.status(404).json({ error: 'Avatar not found' });
+    }
+    const user = await User.findById(userId);
+    if (!user || !user.avatarStoredName) {
+      return res.status(404).json({ error: 'Avatar not found' });
+    }
+    await serveUploadedFile(res, user.avatarStoredName, SUBDIR_BY_CATEGORY.avatar);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Any logged-in user: delete their own account. Requires password as proof of
+// identity  -  a stolen access token alone cannot delete the account.
+// Ends active leases and nullifies related records before removing the user document.
+async function deleteAccount(req, res, next) {
+  try {
+    const { password } = req.body;
+    const userId = req.user.sub;
+
+    const user = await User.findById(userId).select('+passwordHash');
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+
+    const valid = await user.verifyPassword(password);
+    if (!valid) {
+      return res.status(401).json({ error: 'Password is incorrect' });
+    }
+
+    // End any active leases before deleting the account.
+    await Lease.updateMany({ tenantId: userId, status: 'active' }, { status: 'ended', endDate: new Date() });
+
+    await writeAuditLog({
+      actorId: userId,
+      action: ACTIONS.ACCOUNT_DELETED,
+      targetType: 'User',
+      targetId: userId,
+      metadata: { role: user.role },
+    });
+
+    await User.deleteOne({ _id: userId });
+
+    return res.status(204).end();
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = { getProfile, updateProfile, changePassword, exportData, uploadAvatar, serveAvatar, deleteAccount };
