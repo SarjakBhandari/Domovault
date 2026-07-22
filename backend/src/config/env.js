@@ -41,9 +41,8 @@ const envSchema = z
     SMTP_PASS: z.string().optional(),
     SMTP_FROM: z.string().default('noreply@domovault.local'),
     // IP-level rate limiter tunables. Window in ms, max requests per window.
-    // Raise these in dev/staging if automated tests trip the limiter.
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
-    RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
+    RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
     // Auth-specific tighter limits (login / register / reset endpoints).
     RATE_LIMIT_AUTH_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
     RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(20),
