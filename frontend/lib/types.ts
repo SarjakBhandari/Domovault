@@ -10,5 +10,8 @@ export type Property = {
   amenities: string[];
   description: string;
   imageAlt: string;
+  imageUrl?: string | null;
+  imageStoredName?: string | null;
+  electricityCharge?: number | null;
   available: boolean;
 };
