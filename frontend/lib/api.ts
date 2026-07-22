@@ -3,10 +3,6 @@ import { getAccessToken } from './authToken';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-// Central API client. Automatically attaches:
-// - Authorization header with the in-memory access token (never from a cookie,
-//   so CSRF cannot force the browser to include it automatically).
-// - x-csrf-token header on mutating requests (double-submit cookie pattern).
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const method = (options.method ?? 'GET').toUpperCase();
   const headers = new Headers(options.headers);

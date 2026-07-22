@@ -20,6 +20,8 @@ export default function BrowseClient() {
   const [status, setStatus] = useState<Status>('loading');
   const [requestId, setRequestId] = useState(0);
 
+  const hasFilters = query !== '' || maxRent !== '' || bedrooms !== '';
+
   useEffect(() => {
     let active = true;
     startTransition(() => {
@@ -49,81 +51,100 @@ export default function BrowseClient() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
-      <h1 className="text-2xl font-bold text-slate-900">Browse properties</h1>
+      {/* Page header */}
+      <div className="mb-7">
+        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Browse properties</h1>
+        <p className="mt-1 text-sm text-slate-500">Filter by location, size, or budget to find your next home.</p>
+      </div>
 
-      <form
+      {/* Filter bar */}
+      <div
         role="search"
         aria-label="Filter properties"
-        className="mt-6 grid grid-cols-1 gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-4"
-        onSubmit={(e) => e.preventDefault()}
+        className="card p-4 sm:p-5"
       >
-        <div>
-          <label htmlFor="filter-query" className="block text-sm font-medium text-slate-700">
-            City or address
-          </label>
-          <input
-            id="filter-query"
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="e.g. Leeds"
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-brand-600"
-          />
-        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+          <div>
+            <label htmlFor="filter-query" className="label">City or address</label>
+            <div className="relative mt-1.5">
+              <div className="pointer-events-none absolute inset-y-0 left-3 flex items-center">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400" aria-hidden="true">
+                  <circle cx="11" cy="11" r="8" /><path d="m21 21-4.3-4.3" />
+                </svg>
+              </div>
+              <input
+                id="filter-query"
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="e.g. Leeds"
+                className="input pl-9"
+              />
+            </div>
+          </div>
 
-        <div>
-          <label htmlFor="filter-bedrooms" className="block text-sm font-medium text-slate-700">
-            Bedrooms
-          </label>
-          <select
-            id="filter-bedrooms"
-            value={bedrooms}
-            onChange={(e) => setBedrooms(e.target.value)}
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-brand-600"
-          >
-            <option value="">Any</option>
-            <option value="0">Studio</option>
-            <option value="1">1 bed</option>
-            <option value="2">2 bed</option>
-            <option value="3">3 bed</option>
-          </select>
-        </div>
+          <div>
+            <label htmlFor="filter-bedrooms" className="label">Bedrooms</label>
+            <select
+              id="filter-bedrooms"
+              value={bedrooms}
+              onChange={(e) => setBedrooms(e.target.value)}
+              className="input mt-1.5"
+            >
+              <option value="">Any</option>
+              <option value="0">Studio</option>
+              <option value="1">1 bed</option>
+              <option value="2">2 bed</option>
+              <option value="3">3 bed</option>
+            </select>
+          </div>
 
-        <div>
-          <label htmlFor="filter-rent" className="block text-sm font-medium text-slate-700">
-            Max rent (£/month)
-          </label>
-          <input
-            id="filter-rent"
-            type="number"
-            min="0"
-            inputMode="numeric"
-            value={maxRent}
-            onChange={(e) => setMaxRent(e.target.value)}
-            placeholder="e.g. 1200"
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus-visible:border-brand-600"
-          />
-        </div>
+          <div>
+            <label htmlFor="filter-rent" className="label">Max rent (NPR/month)</label>
+            <input
+              id="filter-rent"
+              type="number"
+              min="0"
+              inputMode="numeric"
+              value={maxRent}
+              onChange={(e) => setMaxRent(e.target.value)}
+              placeholder="e.g. 1200"
+              className="input mt-1.5"
+            />
+          </div>
 
-        <div className="flex items-end">
-          <button
-            type="button"
-            onClick={() => {
-              setQuery('');
-              setMaxRent('');
-              setBedrooms('');
-            }}
-            className="w-full rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Clear filters
-          </button>
+          <div className="flex items-end">
+            <button
+              type="button"
+              disabled={!hasFilters}
+              onClick={() => {
+                setQuery('');
+                setMaxRent('');
+                setBedrooms('');
+              }}
+              className="btn-secondary w-full justify-center disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Clear filters
+            </button>
+          </div>
         </div>
-      </form>
+      </div>
 
-      <div className="mt-8" aria-live="polite">
+      {/* Result count */}
+      {status === 'success' && (
+        <p className="mt-5 text-sm text-slate-500">
+          {properties.length === 0
+            ? 'No properties match your filters.'
+            : `Showing ${properties.length} propert${properties.length === 1 ? 'y' : 'ies'}`}
+          {hasFilters && properties.length > 0 && ' matching your filters'}
+        </p>
+      )}
+
+      {/* Results */}
+      <div className="mt-5" aria-live="polite">
         {status === 'loading' && (
           <ul className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => (
+            {Array.from({ length: 6 }).map((_, i) => (
               <PropertyCardSkeleton key={i} />
             ))}
           </ul>

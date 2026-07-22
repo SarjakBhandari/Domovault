@@ -20,107 +20,157 @@ export default async function PropertyDetailsPage({ params }: PageProps) {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
-      <nav aria-label="Breadcrumb" className="text-sm text-slate-500">
-        <Link href="/browse" className="rounded-md hover:text-brand-700">
+      {/* Breadcrumb */}
+      <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-slate-500">
+        <Link href="/browse" className="hover:text-brand-700 transition-colors">
           Browse properties
         </Link>
-        <span aria-hidden="true"> / </span>
-        <span aria-current="page">{property.title}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+          <polyline points="9 18 15 12 9 6" />
+        </svg>
+        <span aria-current="page" className="text-slate-700 font-medium truncate max-w-xs">{property.title}</span>
       </nav>
 
+      {/* Image area */}
       <div
-        role="img"
-        aria-label={property.imageAlt}
-        className="mt-4 flex h-72 items-center justify-center rounded-xl bg-gradient-to-br from-brand-100 to-brand-200 text-brand-700"
-      />
-
-      <div className="mt-6 flex flex-col items-start justify-between gap-2 sm:flex-row sm:items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">{property.title}</h1>
-          <p className="mt-1 text-slate-500">{property.address}</p>
-        </div>
+        className="relative mt-5 flex h-72 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-brand-800 to-brand-900 sm:h-80 lg:h-96"
+      >
+        {property.imageStoredName ? (
+          <img
+            src={`/api/properties/${property.id}/image`}
+            alt={property.imageAlt}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : property.imageUrl ? (
+          <img
+            src={property.imageUrl}
+            alt={property.imageAlt}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+        ) : (
+          <svg
+            width="120"
+            height="120"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="0.75"
+            className="text-white/10"
+            aria-hidden="true"
+          >
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+        )}
         <span
-          className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium ${
+          className={`absolute left-4 top-4 rounded-full px-3 py-1 text-xs font-semibold ${
             property.available
-              ? 'bg-brand-100 text-brand-800'
-              : 'bg-slate-100 text-slate-600'
+              ? 'bg-emerald-500 text-white'
+              : 'bg-slate-600 text-white'
           }`}
         >
-          {property.available ? 'Available' : 'Currently leased'}
+          {property.available ? 'Available' : 'Leased'}
         </span>
       </div>
 
-      <p className="mt-4 text-2xl font-bold text-brand-800">
-        £{property.rentPerMonth.toLocaleString()}
-        <span className="text-base font-normal text-slate-500"> /month</span>
-      </p>
+      {/* Title + price row */}
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+            {property.title}
+          </h1>
+          <p className="mt-1.5 flex items-center gap-1.5 text-sm text-slate-500">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+              <circle cx="12" cy="10" r="3" />
+            </svg>
+            {property.address}
+          </p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="text-3xl font-extrabold text-brand-700">
+            NPR{property.rentPerMonth.toLocaleString()}
+          </p>
+          <p className="mt-0.5 text-xs text-slate-500">per month</p>
+          {property.electricityCharge != null && (
+            <p className="mt-1 text-xs text-slate-500">
+              + NPR{property.electricityCharge.toLocaleString()} electricity/mo
+            </p>
+          )}
+        </div>
+      </div>
 
-      <dl className="mt-6 grid grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-white p-5 sm:grid-cols-4">
-        <div>
-          <dt className="text-xs font-medium uppercase text-slate-500">Bedrooms</dt>
-          <dd className="mt-1 text-lg font-semibold text-slate-900">
-            {property.bedrooms === 0 ? 'Studio' : property.bedrooms}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs font-medium uppercase text-slate-500">Bathrooms</dt>
-          <dd className="mt-1 text-lg font-semibold text-slate-900">{property.bathrooms}</dd>
-        </div>
-        <div>
-          <dt className="text-xs font-medium uppercase text-slate-500">Size</dt>
-          <dd className="mt-1 text-lg font-semibold text-slate-900">
-            {property.sizeSqft} sqft
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs font-medium uppercase text-slate-500">City</dt>
-          <dd className="mt-1 text-lg font-semibold text-slate-900">{property.city}</dd>
-        </div>
+      {/* Stats */}
+      <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: 'Bedrooms', value: property.bedrooms === 0 ? 'Studio' : String(property.bedrooms) },
+          { label: 'Bathrooms', value: String(property.bathrooms) },
+          { label: 'Size', value: `${property.sizeSqft} sqft` },
+          { label: 'City', value: property.city },
+        ].map(({ label, value }) => (
+          <div key={label} className="card p-4">
+            <dt className="text-xs font-semibold uppercase tracking-wider text-slate-400">{label}</dt>
+            <dd className="mt-1 text-lg font-bold text-slate-900">{value}</dd>
+          </div>
+        ))}
       </dl>
 
-      <section aria-labelledby="description-heading" className="mt-8">
-        <h2 id="description-heading" className="text-lg font-semibold text-slate-900">
-          Description
-        </h2>
-        <p className="mt-2 leading-relaxed text-slate-700">{property.description}</p>
-      </section>
+      {/* Description */}
+      {property.description && (
+        <section aria-labelledby="description-heading" className="mt-8">
+          <h2 id="description-heading" className="text-base font-semibold text-slate-900">
+            About this property
+          </h2>
+          <p className="mt-2.5 leading-relaxed text-slate-600 text-sm">{property.description}</p>
+        </section>
+      )}
 
-      <section aria-labelledby="amenities-heading" className="mt-8">
-        <h2 id="amenities-heading" className="text-lg font-semibold text-slate-900">
-          Amenities
-        </h2>
-        <ul className="mt-3 flex flex-wrap gap-2">
-          {property.amenities.map((amenity) => (
-            <li
-              key={amenity}
-              className="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-700"
-            >
-              {amenity}
-            </li>
-          ))}
-        </ul>
-      </section>
+      {/* Amenities */}
+      {property.amenities.length > 0 && (
+        <section aria-labelledby="amenities-heading" className="mt-8">
+          <h2 id="amenities-heading" className="text-base font-semibold text-slate-900">
+            Amenities
+          </h2>
+          <ul className="mt-3 flex flex-wrap gap-2">
+            {property.amenities.map((amenity) => (
+              <li
+                key={amenity}
+                className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm"
+              >
+                {amenity}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
-      <div className="mt-10 flex flex-wrap items-center gap-4 border-t border-slate-200 pt-6">
+      {/* CTA */}
+      <div className="mt-10 border-t border-slate-200 pt-8">
         {property.available ? (
-          <>
+          <div className="flex flex-wrap items-center gap-4">
             <Link
               href={`/apply/${property.id}`}
-              className="inline-block rounded-md bg-brand-700 px-6 py-3 font-semibold text-white hover:bg-brand-800"
+              className="btn-primary inline-flex items-center gap-2"
             >
               Apply for this property
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
             </Link>
             <Link
               href="/register"
-              className="text-sm text-slate-500 hover:text-slate-700"
+              className="text-sm text-slate-500 hover:text-brand-700 transition-colors"
             >
               No account yet? Register first
             </Link>
-          </>
+          </div>
         ) : (
-          <p className="text-sm text-slate-500">
-            This property is not currently accepting applications.
-          </p>
+          <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 shrink-0 text-slate-400" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" />
+            </svg>
+            <p className="text-sm text-slate-600">This property is not currently accepting applications.</p>
+          </div>
         )}
       </div>
     </div>

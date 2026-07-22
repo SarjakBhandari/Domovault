@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, startTransition } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiJson, apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/authToken';
@@ -22,7 +22,6 @@ type Status = 'loading' | 'ready' | 'unauth' | 'not-found' | 'unavailable' | 'su
 
 export default function ApplyPage() {
   const { id } = useParams<{ id: string }>();
-  const router = useRouter();
   const [property, setProperty] = useState<Property | null>(null);
   const [pageStatus, setPageStatus] = useState<Status>('loading');
   const [notes, setNotes] = useState('');
@@ -37,11 +36,7 @@ export default function ApplyPage() {
     apiJson<Property>(`/api/properties/${id}`)
       .then((data) => {
         setProperty(data);
-        if (data.status !== 'available') {
-          setPageStatus('unavailable');
-        } else {
-          setPageStatus('ready');
-        }
+        setPageStatus(data.status !== 'available' ? 'unavailable' : 'ready');
       })
       .catch((err) => {
         setPageStatus(err.status === 404 ? 'not-found' : 'error');
@@ -54,26 +49,40 @@ export default function ApplyPage() {
     setPageStatus('submitting');
 
     try {
-      await apiFetch('/api/applications', {
+      const res = await apiFetch('/api/applications', {
         method: 'POST',
         body: JSON.stringify({ propertyId: id, notes }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setErrorMsg(data?.error ?? 'Application failed. Please try again.');
+        setPageStatus('ready');
+        return;
+      }
       setPageStatus('success');
-    } catch (err: unknown) {
-      setErrorMsg((err as Error).message ?? 'Application failed. Please try again.');
+    } catch {
+      setErrorMsg('Could not reach the server. Check your connection.');
       setPageStatus('ready');
     }
   }
 
   if (pageStatus === 'loading') {
-    return <div className="mx-auto max-w-2xl px-4 py-16 text-center text-slate-500">Loading...</div>;
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
+        <div className="animate-pulse space-y-4">
+          <div className="h-7 w-64 rounded-lg bg-slate-100" />
+          <div className="h-24 rounded-2xl bg-slate-100" />
+          <div className="h-32 rounded-2xl bg-slate-100" />
+        </div>
+      </div>
+    );
   }
 
   if (pageStatus === 'unauth') {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-16 text-center">
-        <p>You must be logged in to apply.</p>
-        <Link href={`/login?return=/apply/${id}`} className="mt-4 inline-block text-brand-700 underline">
+      <div className="mx-auto max-w-md px-4 py-20 text-center">
+        <p className="text-base font-semibold text-slate-800">You must be logged in to apply</p>
+        <Link href={`/login?return=/apply/${id}`} className="btn-primary mt-5 inline-flex justify-center">
           Log in
         </Link>
       </div>
@@ -82,32 +91,37 @@ export default function ApplyPage() {
 
   if (pageStatus === 'not-found' || !property) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-16 text-center text-slate-600">
-        <p>This property could not be found.</p>
-        <Link href="/browse" className="mt-4 inline-block text-brand-700 underline">Browse properties</Link>
+      <div className="mx-auto max-w-md px-4 py-20 text-center">
+        <p className="text-base font-semibold text-slate-800">Property not found</p>
+        <Link href="/browse" className="btn-primary mt-5 inline-flex justify-center">Browse properties</Link>
       </div>
     );
   }
 
   if (pageStatus === 'unavailable') {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-16 text-center text-slate-600">
-        <p>This property is no longer available for applications.</p>
-        <Link href="/browse" className="mt-4 inline-block text-brand-700 underline">Browse other properties</Link>
+      <div className="mx-auto max-w-md px-4 py-20 text-center">
+        <p className="text-base font-semibold text-slate-800">Property unavailable</p>
+        <p className="mt-1.5 text-sm text-slate-500">This property is no longer accepting applications.</p>
+        <Link href="/browse" className="btn-primary mt-5 inline-flex justify-center">Browse properties</Link>
       </div>
     );
   }
 
   if (pageStatus === 'success') {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-16 text-center">
-        <div className="rounded-lg border border-green-200 bg-green-50 p-8">
-          <h1 className="text-xl font-bold text-green-800">Application submitted</h1>
-          <p className="mt-2 text-sm text-green-700">
-            Your application for <strong>{property.title}</strong> has been received.
-            The owner will review it and get back to you.
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center px-4 py-12">
+        <div className="w-full max-w-sm text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-emerald-600" aria-hidden="true">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+          <h1 className="mt-5 text-xl font-extrabold text-slate-900">Application submitted</h1>
+          <p className="mt-2 text-sm leading-relaxed text-slate-500">
+            Your application for <span className="font-medium text-slate-700">{property.title}</span> has been received. The owner will review it and get back to you.
           </p>
-          <Link href="/applications" className="mt-6 inline-block text-brand-700 underline text-sm">
+          <Link href="/applications" className="btn-primary mt-6 inline-flex justify-center">
             View my applications
           </Link>
         </div>
@@ -116,58 +130,73 @@ export default function ApplyPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10">
-      <h1 className="text-2xl font-bold text-slate-900">Apply for this property</h1>
-
-      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
-        <p className="font-semibold">{property.title}</p>
-        <p className="mt-0.5 text-slate-500">
-          {property.address}, {property.city} &mdash; {property.bedrooms}bd {property.bathrooms}ba
-        </p>
-        <p className="mt-1 font-semibold text-brand-700">
-          &pound;{property.rentPerMonth.toLocaleString()} / month
-        </p>
+    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 space-y-7">
+      <div>
+        <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Apply for this property</h1>
+        <p className="mt-1 text-sm text-slate-500">Review the details and send a message to the owner.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+      {/* Property summary */}
+      <div className="card p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="font-semibold text-slate-800">{property.title}</p>
+            <p className="mt-0.5 text-sm text-slate-500">{property.address}, {property.city}</p>
+            <p className="mt-0.5 text-xs text-slate-400">{property.bedrooms}bd {property.bathrooms}ba</p>
+          </div>
+          <div className="shrink-0 text-right">
+            <p className="text-xl font-extrabold text-brand-700">NPR {property.rentPerMonth.toLocaleString()}</p>
+            <p className="text-xs text-slate-400">per month</p>
+          </div>
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-5">
         {errorMsg && (
           <div
             role="alert"
-            className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
           >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 shrink-0" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" />
+            </svg>
             {errorMsg}
           </div>
         )}
 
         <div>
-          <label htmlFor="notes" className="block text-sm font-medium text-slate-700">
-            Message to owner (optional)
-          </label>
+          <label htmlFor="notes" className="label">Message to owner (optional)</label>
           <textarea
             id="notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             maxLength={1000}
-            rows={4}
-            placeholder="Introduce yourself, mention your move-in date, etc."
-            className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+            rows={5}
+            placeholder="Introduce yourself, mention your move-in date, employment status, etc."
+            className="input resize-none"
           />
         </div>
 
-        <p className="text-xs text-slate-500">
-          By submitting you agree to the owner reviewing your profile and any documents you upload.
-          You can upload ID and income proof after submitting via My Applications.
+        <p className="text-xs text-slate-500 leading-relaxed">
+          By submitting you agree to the owner reviewing your profile. You can upload ID and income proof after submitting via My Applications.
         </p>
 
         <div className="flex items-center gap-4">
           <button
             type="submit"
             disabled={pageStatus === 'submitting'}
-            className="rounded-md bg-brand-700 px-6 py-3 font-semibold text-white hover:bg-brand-800 disabled:opacity-60"
+            className="btn-primary"
           >
-            {pageStatus === 'submitting' ? 'Submitting...' : 'Submit application'}
+            {pageStatus === 'submitting' ? (
+              <span className="flex items-center gap-2">
+                <svg className="animate-spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+                Submitting...
+              </span>
+            ) : 'Submit application'}
           </button>
-          <Link href={`/properties/${id}`} className="text-sm text-slate-500 hover:text-slate-700">
+          <Link href={`/properties/${id}`} className="text-sm text-slate-500 hover:text-slate-700 transition-colors">
             Cancel
           </Link>
         </div>

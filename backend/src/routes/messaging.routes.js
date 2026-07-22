@@ -1,30 +1,33 @@
 const express = require('express');
 const messagingController = require('../controllers/messaging.controller');
-const { sendMessageSchema } = require('../validators/messaging.validators');
+const { z } = require('zod');
 const validateBody = require('../middleware/validateBody');
 const methodNotAllowed = require('../middleware/methodGuard');
 const { verifyCsrfToken } = require('../middleware/csrf');
 const requireAuth = require('../middleware/requireAuth');
-const { authRateLimiter } = require('../middleware/rateLimit');
+const requireRole = require('../middleware/requireRole');
 
 const router = express.Router();
 
-// List all conversations for the caller.
+const sendMessageSchema = z
+  .object({
+    recipientId: z.string().min(1).max(64),
+    body: z.string().trim().min(1).max(2000),
+  })
+  .strict();
+
+// Only admin and tenant can use messaging.
 router
   .route('/')
-  .get(requireAuth, messagingController.listConversations)
-  .all(methodNotAllowed(['GET']));
+  .get(requireAuth, requireRole('admin', 'tenant'), messagingController.listConversations)
+  .post(requireAuth, requireRole('admin', 'tenant'), verifyCsrfToken, validateBody(sendMessageSchema), messagingController.sendMessage)
+  .all(methodNotAllowed(['GET', 'POST']));
 
-// Get a conversation thread (all messages on a property between two users).
+// Get conversation with a specific user. The conversationId is derived
+// server-side from the two user IDs  -  the client only supplies the other user's ID.
 router
-  .route('/:propertyId/:partnerId')
-  .get(requireAuth, messagingController.getConversation)
+  .route('/:userId')
+  .get(requireAuth, requireRole('admin', 'tenant'), messagingController.getConversation)
   .all(methodNotAllowed(['GET']));
-
-// Send a message on a property thread. Rate-limited to discourage flooding.
-router
-  .route('/:propertyId')
-  .post(authRateLimiter, requireAuth, verifyCsrfToken, validateBody(sendMessageSchema), messagingController.sendMessage)
-  .all(methodNotAllowed(['POST']));
 
 module.exports = router;

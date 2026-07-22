@@ -21,42 +21,47 @@ const envSchema = z
       .refine((val) => Buffer.from(val, 'base64').length === 32, {
         message: 'PII_ENCRYPTION_KEY must be a base64-encoded 32-byte key',
       }),
-    // "none" leaves CAPTCHA off (the local/dev default). "test" is a
-    // deterministic stand-in for integration tests - it is refused outside
-    // NODE_ENV=test/development below so it can never end up protecting a
-    // real deployment.
-    CAPTCHA_PROVIDER: z.enum(['none', 'hcaptcha', 'recaptcha', 'test']).default('none'),
-    CAPTCHA_SECRET_KEY: z.string().optional(),
-    CAPTCHA_TRIGGER_THRESHOLD: z.coerce.number().int().positive().default(5),
     // Base URL used when building links (e.g. password-reset emails) so they
     // are never constructed from req.headers.host (host-header attack prevention).
     APP_URL: z.string().url().default('http://localhost:3000'),
-    // Directory where uploaded files are stored. Must be writable by the
-    // process and located outside the web root so files are never served
-    // directly by the HTTP server.
+    // Located outside the web root so files are never served directly by the HTTP server.
     UPLOAD_DIR: z.string().min(1).default('uploads'),
     // Optional comma-separated domain allow-list for outbound URL fetches
     // (property photo import). Empty = no restriction beyond IP-range blocking.
     SSRF_ALLOWED_DOMAINS: z.string().default(''),
-    // Optional seed credentials for the admin user created on first startup.
-    // Only honoured when NODE_ENV is not 'production'.
     ADMIN_SEED_EMAIL: z.string().email().optional(),
     ADMIN_SEED_PASSWORD: z.string().min(12).optional(),
-  })
-  .superRefine((config, ctx) => {
-    if (['hcaptcha', 'recaptcha'].includes(config.CAPTCHA_PROVIDER) && !config.CAPTCHA_SECRET_KEY) {
+    SMTP_HOST: z.string().min(1).default('localhost'),
+    SMTP_PORT: z.coerce.number().int().positive().default(1025),
+    SMTP_SECURE: z
+      .string()
+      .transform((v) => v === 'true')
+      .default('false'),
+    SMTP_USER: z.string().optional(),
+    SMTP_PASS: z.string().optional(),
+    SMTP_FROM: z.string().default('noreply@domovault.local'),
+    // IP-level rate limiter tunables. Window in ms, max requests per window.
+    // Raise these in dev/staging if automated tests trip the limiter.
+    RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
+    RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
+    // Auth-specific tighter limits (login / register / reset endpoints).
+    RATE_LIMIT_AUTH_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
+    RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(20),
+    // Google OAuth 2.0 credentials  -  optional; omit to disable Google sign-in.
+    // Register the redirect URI at: https://console.cloud.google.com
+    //   Redirect URI: <APP_URL>/api/auth/oauth/google/callback
+    GOOGLE_CLIENT_ID:     z.string().min(1).optional(),
+    GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+    // Secret for HMAC-signing the OAuth state parameter (CSRF nonce).
+    // Required when Google OAuth credentials are configured.
+    OAUTH_STATE_SECRET: z.string().min(32).optional(),
+  }).superRefine((val, ctx) => {
+    const hasGoogle = val.GOOGLE_CLIENT_ID || val.GOOGLE_CLIENT_SECRET;
+    if (hasGoogle && !val.OAUTH_STATE_SECRET) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['CAPTCHA_SECRET_KEY'],
-        message: 'CAPTCHA_SECRET_KEY is required when CAPTCHA_PROVIDER is hcaptcha or recaptcha',
-      });
-    }
-
-    if (config.CAPTCHA_PROVIDER === 'test' && config.NODE_ENV === 'production') {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['CAPTCHA_PROVIDER'],
-        message: 'CAPTCHA_PROVIDER=test is not allowed when NODE_ENV=production',
+        message: 'OAUTH_STATE_SECRET (min 32 chars) is required when Google OAuth is configured',
+        path: ['OAUTH_STATE_SECRET'],
       });
     }
   });

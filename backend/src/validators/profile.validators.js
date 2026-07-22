@@ -24,4 +24,10 @@ const changePasswordSchema = z
   })
   .strict();
 
-module.exports = { updateProfileSchema, changePasswordSchema };
+const deleteAccountSchema = z
+  .object({
+    password: z.string().min(1).max(128),
+  })
+  .strict();
+
+module.exports = { updateProfileSchema, changePasswordSchema, deleteAccountSchema };

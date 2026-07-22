@@ -9,4 +9,10 @@ const confirmPaymentSchema = z
   })
   .strict();
 
-module.exports = { confirmPaymentSchema };
+const billRequestSchema = z
+  .object({
+    message: z.string().trim().max(500).optional(),
+  })
+  .strict();
+
+module.exports = { confirmPaymentSchema, billRequestSchema };

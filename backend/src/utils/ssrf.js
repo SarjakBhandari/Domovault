@@ -35,8 +35,7 @@ function isPrivateIPv4(ip) {
 
 // IPv6 private/loopback/link-local ranges. Checking by prefix string is
 // sufficient for the ranges we care about (loopback ::1, link-local fe80::/10,
-// unique-local fc00::/7). Full IPv6 bitfield arithmetic is omitted for
-// clarity; a production implementation would use a proper IP library.
+// unique-local fc00::/7).
 function isPrivateIPv6(ip) {
   const lower = ip.toLowerCase();
   if (lower === '::1') return true;
@@ -63,8 +62,6 @@ function getAllowedDomains() {
     : [];
 }
 
-// Validates a URL and checks that the resolved IP is not in a private range.
-// Returns { safe: true } or { safe: false, reason: string }.
 async function checkUrl(rawUrl) {
   let parsed;
   try {

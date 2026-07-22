@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const mongoose = require('mongoose');
 const argon2 = require('argon2');
-const { encrypt, decrypt } = require('../utils/crypto');
+const { encrypt, decrypt, hmacField } = require('../utils/crypto');
 
 const ROLES = ['applicant', 'tenant', 'admin'];
 
@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema(
     fullName: { type: String, required: true, trim: true, maxlength: 100 },
     phone: { type: String, trim: true, maxlength: 30, default: null },
     bio: { type: String, trim: true, maxlength: 500, default: null },
+    avatarStoredName: { type: String, default: null },
     email: {
       type: String,
       required: true,
@@ -21,7 +22,19 @@ const userSchema = new mongoose.Schema(
     // Never returned by any query by default; controllers must opt in with
     // .select('+passwordHash') and the toJSON transform below strips it again
     // before any response leaves the process.
-    passwordHash: { type: String, required: true, select: false },
+    // Not required for OAuth accounts (oauthProvider is set instead).
+    passwordHash: {
+      type: String,
+      select: false,
+      required: function () { return !this.oauthProvider; },
+    },
+    // OAuth identity  -  set only for accounts created/linked via Google sign-in.
+    // oauthIdEncrypted stores the provider's user ID under AES-256-GCM (PII).
+    // oauthIdHash is an HMAC-SHA256 of (provider:rawId) keyed with PII_ENCRYPTION_KEY
+    // so lookups can use an indexed, deterministic value without storing plaintext.
+    oauthProvider:    { type: String, enum: ['google', null], default: null },
+    oauthIdHash:      { type: String, default: null, select: false },
+    oauthIdEncrypted: { type: String, default: null, select: false },
     // Server-controlled only. No route ever assigns these from request input.
     role: { type: String, enum: ROLES, default: 'applicant' },
     isVerified: { type: Boolean, default: false },
@@ -56,9 +69,35 @@ const userSchema = new mongoose.Schema(
       default: [],
       select: false,
     },
+    // SHA-256 hash of the single-use password-reset token. Never the raw token.
+    // The raw token is returned once to the caller and included in the reset URL.
+    // Expires after 1 hour; consuming it nulls both fields.
+    passwordResetTokenHash: { type: String, default: null, select: false },
+    passwordResetExpiry: { type: Date, default: null, select: false },
+    // SHA-256 hash of the 6-digit OTP sent on registration. Expires in 10 minutes.
+    emailOtpHash: { type: String, default: null, select: false },
+    emailOtpExpiry: { type: Date, default: null, select: false },
   },
   { timestamps: true }
 );
+
+// Sparse unique index on the HMAC hash  -  allows null (local-only accounts) but
+// prevents two OAuth accounts from mapping to the same provider identity.
+userSchema.index({ oauthIdHash: 1 }, { unique: true, sparse: true });
+
+// Store the provider's user ID: HMAC hash for indexed lookup, AES-256-GCM
+// ciphertext for the value itself. Never store or compare the raw ID directly.
+userSchema.methods.setOauthId = function setOauthId(provider, rawId) {
+  this.oauthProvider    = provider;
+  this.oauthIdHash      = hmacField(`${provider}:${rawId}`);
+  this.oauthIdEncrypted = encrypt(rawId);
+};
+
+// Lookup helper  -  finds a user by provider + raw ID using the stored HMAC hash.
+userSchema.statics.findByOauthId = function findByOauthId(provider, rawId) {
+  const hash = hmacField(`${provider}:${rawId}`);
+  return this.findOne({ oauthProvider: provider, oauthIdHash: hash });
+};
 
 userSchema.methods.setPassword = async function setPassword(plainPassword) {
   this.passwordHash = await argon2.hash(plainPassword, { type: argon2.argon2id });
@@ -86,6 +125,45 @@ userSchema.methods.setRefreshToken = function setRefreshToken(token) {
 
 userSchema.methods.matchesRefreshToken = function matchesRefreshToken(token) {
   return Boolean(this.refreshTokenHash) && this.refreshTokenHash === hashToken(token);
+};
+
+// Returns the plaintext token (included once in the reset link URL).
+// Stores only the SHA-256 hash + a 1-hour expiry so a DB leak cannot
+// be used directly to reset passwords.
+userSchema.methods.setPasswordResetToken = function setPasswordResetToken() {
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  this.passwordResetTokenHash = hashToken(rawToken);
+  this.passwordResetExpiry = new Date(Date.now() + 60 * 60 * 1000);
+  return rawToken;
+};
+
+userSchema.methods.verifyPasswordResetToken = function verifyPasswordResetToken(rawToken) {
+  if (!this.passwordResetTokenHash || !this.passwordResetExpiry) return false;
+  if (this.passwordResetExpiry < new Date()) return false;
+  return this.passwordResetTokenHash === hashToken(rawToken);
+};
+
+userSchema.methods.clearPasswordResetToken = function clearPasswordResetToken() {
+  this.passwordResetTokenHash = null;
+  this.passwordResetExpiry = null;
+};
+
+userSchema.methods.setEmailOtp = function setEmailOtp() {
+  const otp = crypto.randomInt(100000, 1000000).toString();
+  this.emailOtpHash = hashToken(otp);
+  this.emailOtpExpiry = new Date(Date.now() + 10 * 60 * 1000);
+  return otp;
+};
+
+userSchema.methods.verifyEmailOtp = function verifyEmailOtp(otp) {
+  if (!this.emailOtpHash || !this.emailOtpExpiry) return false;
+  if (this.emailOtpExpiry < new Date()) return false;
+  return this.emailOtpHash === hashToken(otp);
+};
+
+userSchema.methods.clearEmailOtp = function clearEmailOtp() {
+  this.emailOtpHash = null;
+  this.emailOtpExpiry = null;
 };
 
 userSchema.methods.isLocked = function isLocked() {
@@ -158,6 +236,12 @@ const stripSensitiveFields = (doc, ret) => {
   delete ret.mfaSecretEncrypted;
   delete ret.mfaPendingSecretEncrypted;
   delete ret.mfaBackupCodes;
+  delete ret.passwordResetTokenHash;
+  delete ret.passwordResetExpiry;
+  delete ret.emailOtpHash;
+  delete ret.emailOtpExpiry;
+  delete ret.oauthIdHash;      // internal HMAC  -  not needed by any client
+  delete ret.oauthIdEncrypted; // encrypted provider ID  -  PII, never exposed
   delete ret.__v;
   return ret;
 };
