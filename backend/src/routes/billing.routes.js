@@ -24,6 +24,20 @@ router
   .get(requireAuth, billingController.listBillingCycles)
   .all(methodNotAllowed(['GET']));
 
+// Tenant: submit a bill request. Admin: list all bill requests for owned properties.
+// Must be declared before /:id so "requests" is not swallowed by the param route.
+router
+  .route('/requests')
+  .get(requireAuth, billingController.listBillRequests)
+  .post(requireAuth, requireRole('tenant'), verifyCsrfToken, validateBody(billRequestSchema), billingController.createBillRequest)
+  .all(methodNotAllowed(['GET', 'POST']));
+
+// Admin-only: mark a bill request as sent. CSRF required.
+router
+  .route('/requests/:id/send')
+  .post(requireAuth, requireRole('admin'), verifyCsrfToken, billingController.sendBillRequest)
+  .all(methodNotAllowed(['POST']));
+
 // Get a single cycle.
 router
   .route('/:id')
@@ -47,19 +61,6 @@ router
 router
   .route('/:id/confirm')
   .post(requireAuth, requireRole('admin'), verifyCsrfToken, validateBody(confirmPaymentSchema), billingController.confirmPayment)
-  .all(methodNotAllowed(['POST']));
-
-// Tenant: submit a bill request. Admin: list all bill requests for owned properties.
-router
-  .route('/requests')
-  .get(requireAuth, billingController.listBillRequests)
-  .post(requireAuth, requireRole('tenant'), verifyCsrfToken, validateBody(billRequestSchema), billingController.createBillRequest)
-  .all(methodNotAllowed(['GET', 'POST']));
-
-// Admin-only: mark a bill request as sent. CSRF required.
-router
-  .route('/requests/:id/send')
-  .post(requireAuth, requireRole('admin'), verifyCsrfToken, billingController.sendBillRequest)
   .all(methodNotAllowed(['POST']));
 
 module.exports = router;

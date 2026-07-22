@@ -9,8 +9,6 @@ const maintenanceRoutes = require('./maintenance.routes');
 const billingRoutes = require('./billing.routes');
 const adminRoutes = require('./admin.routes');
 const messagingRoutes = require('./messaging.routes');
-const oauthRoutes = require('./oauth.routes');
-
 const router = express.Router();
 
 router.use('/health', healthRoutes);
@@ -23,6 +21,5 @@ router.use('/maintenance', maintenanceRoutes);
 router.use('/billing', billingRoutes);
 router.use('/admin', adminRoutes);
 router.use('/messages', messagingRoutes);
-router.use('/auth/oauth', oauthRoutes);
 
 module.exports = router;
