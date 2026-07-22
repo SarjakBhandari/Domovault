@@ -11,6 +11,40 @@ const STATS = [
   { value: 'Fast', label: 'instant applications' },
 ];
 
+const VALUE_PROPS = [
+  {
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      </svg>
+    ),
+    title: 'End-to-end security',
+    description:
+      'AES-256 encryption for sensitive data, multi-factor authentication, and zero unprotected document inboxes.',
+  },
+  {
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+        <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.35 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.99 16l-.07.92z" />
+      </svg>
+    ),
+    title: 'Direct communication',
+    description:
+      'Message landlords and manage your application through a single, secure platform. No third-party email needed.',
+  },
+  {
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+        <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
+        <line x1="1" x2="23" y1="10" y2="10" />
+      </svg>
+    ),
+    title: 'Transparent billing',
+    description:
+      'Upload payment proof, track rent status, and access your full billing history in one place.',
+  },
+];
+
 export default async function HomePage() {
   const featured = await getFeaturedProperties();
 
@@ -20,11 +54,7 @@ export default async function HomePage() {
       <section className="relative overflow-hidden bg-gradient-to-br from-brand-900 via-brand-800 to-brand-700">
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.07),transparent_60%)]"
-        />
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -bottom-px left-0 right-0 h-px bg-gradient-to-r from-transparent via-brand-400/30 to-transparent"
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.06),transparent_60%)]"
         />
 
         <div className="relative mx-auto max-w-6xl px-4 pb-20 pt-16 sm:px-6 sm:pb-24 sm:pt-20 lg:px-8">
@@ -98,10 +128,7 @@ export default async function HomePage() {
         )}
 
         <div className="mt-8 text-center sm:hidden">
-          <Link
-            href="/browse"
-            className="btn-secondary inline-block"
-          >
+          <Link href="/browse" className="btn-secondary inline-flex">
             Browse all properties
           </Link>
         </div>
@@ -118,41 +145,9 @@ export default async function HomePage() {
           </div>
 
           <dl className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-3">
-            {[
-              {
-                icon: (
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                  </svg>
-                ),
-                title: 'End-to-end security',
-                description:
-                  'AES-256 encryption for sensitive data, multi-factor authentication, and zero unprotected document inboxes.',
-              },
-              {
-                icon: (
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-                    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.35 2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 21.99 16l-.07.92z" />
-                  </svg>
-                ),
-                title: 'Direct communication',
-                description:
-                  'Message landlords and manage your application through a single, secure platform. No third-party email needed.',
-              },
-              {
-                icon: (
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-                    <rect x="1" y="4" width="22" height="16" rx="2" ry="2" />
-                    <line x1="1" x2="23" y1="10" y2="10" />
-                  </svg>
-                ),
-                title: 'Transparent billing',
-                description:
-                  'Upload payment proof, track rent status, and access your full billing history in one place.',
-              },
-            ].map(({ icon, title, description }) => (
+            {VALUE_PROPS.map(({ icon, title, description }) => (
               <div key={title} className="card p-6">
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-700">
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
                   {icon}
                 </div>
                 <dt className="mt-4 text-sm font-semibold text-slate-900">{title}</dt>
@@ -164,25 +159,19 @@ export default async function HomePage() {
       </section>
 
       {/* CTA */}
-      <section className="bg-gradient-to-r from-brand-800 to-brand-700">
+      <section className="border-t border-brand-100 bg-brand-50">
         <div className="mx-auto max-w-6xl px-4 py-14 text-center sm:px-6 lg:px-8">
-          <h2 className="text-2xl font-bold text-white sm:text-3xl">
+          <h2 className="text-2xl font-bold text-brand-900 sm:text-3xl">
             Ready to find your next home?
           </h2>
-          <p className="mt-3 text-brand-100 text-sm">
+          <p className="mt-3 text-slate-500 text-sm">
             Join thousands of tenants managing their rental journey securely.
           </p>
           <div className="mt-7 flex flex-col items-center justify-center gap-3 sm:flex-row">
-            <Link
-              href="/browse"
-              className="rounded-xl bg-white px-7 py-3.5 text-sm font-semibold text-brand-800 shadow-sm transition-colors hover:bg-brand-50"
-            >
+            <Link href="/browse" className="btn-secondary">
               Browse properties
             </Link>
-            <Link
-              href="/register"
-              className="rounded-xl border border-brand-400 px-7 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-brand-600/50"
-            >
+            <Link href="/register" className="btn-primary">
               Create free account
             </Link>
           </div>

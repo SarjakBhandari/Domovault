@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const mongoose = require('mongoose');
 const argon2 = require('argon2');
-const { encrypt, decrypt, hmacField } = require('../utils/crypto');
+const { encrypt, decrypt } = require('../utils/crypto');
 
 const ROLES = ['applicant', 'tenant', 'admin'];
 
@@ -22,19 +22,11 @@ const userSchema = new mongoose.Schema(
     // Never returned by any query by default; controllers must opt in with
     // .select('+passwordHash') and the toJSON transform below strips it again
     // before any response leaves the process.
-    // Not required for OAuth accounts (oauthProvider is set instead).
     passwordHash: {
       type: String,
       select: false,
-      required: function () { return !this.oauthProvider; },
+      required: true,
     },
-    // OAuth identity  -  set only for accounts created/linked via Google sign-in.
-    // oauthIdEncrypted stores the provider's user ID under AES-256-GCM (PII).
-    // oauthIdHash is an HMAC-SHA256 of (provider:rawId) keyed with PII_ENCRYPTION_KEY
-    // so lookups can use an indexed, deterministic value without storing plaintext.
-    oauthProvider:    { type: String, enum: ['google', null], default: null },
-    oauthIdHash:      { type: String, default: null, select: false },
-    oauthIdEncrypted: { type: String, default: null, select: false },
     // Server-controlled only. No route ever assigns these from request input.
     role: { type: String, enum: ROLES, default: 'applicant' },
     isVerified: { type: Boolean, default: false },
@@ -80,24 +72,6 @@ const userSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
-
-// Sparse unique index on the HMAC hash  -  allows null (local-only accounts) but
-// prevents two OAuth accounts from mapping to the same provider identity.
-userSchema.index({ oauthIdHash: 1 }, { unique: true, sparse: true });
-
-// Store the provider's user ID: HMAC hash for indexed lookup, AES-256-GCM
-// ciphertext for the value itself. Never store or compare the raw ID directly.
-userSchema.methods.setOauthId = function setOauthId(provider, rawId) {
-  this.oauthProvider    = provider;
-  this.oauthIdHash      = hmacField(`${provider}:${rawId}`);
-  this.oauthIdEncrypted = encrypt(rawId);
-};
-
-// Lookup helper  -  finds a user by provider + raw ID using the stored HMAC hash.
-userSchema.statics.findByOauthId = function findByOauthId(provider, rawId) {
-  const hash = hmacField(`${provider}:${rawId}`);
-  return this.findOne({ oauthProvider: provider, oauthIdHash: hash });
-};
 
 userSchema.methods.setPassword = async function setPassword(plainPassword) {
   this.passwordHash = await argon2.hash(plainPassword, { type: argon2.argon2id });
@@ -240,8 +214,6 @@ const stripSensitiveFields = (doc, ret) => {
   delete ret.passwordResetExpiry;
   delete ret.emailOtpHash;
   delete ret.emailOtpExpiry;
-  delete ret.oauthIdHash;      // internal HMAC  -  not needed by any client
-  delete ret.oauthIdEncrypted; // encrypted provider ID  -  PII, never exposed
   delete ret.__v;
   return ret;
 };

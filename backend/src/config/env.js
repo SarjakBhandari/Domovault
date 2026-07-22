@@ -41,29 +41,11 @@ const envSchema = z
     SMTP_PASS: z.string().optional(),
     SMTP_FROM: z.string().default('noreply@domovault.local'),
     // IP-level rate limiter tunables. Window in ms, max requests per window.
-    // Raise these in dev/staging if automated tests trip the limiter.
     RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
-    RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
+    RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
     // Auth-specific tighter limits (login / register / reset endpoints).
     RATE_LIMIT_AUTH_WINDOW_MS: z.coerce.number().int().positive().default(15 * 60 * 1000),
     RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(20),
-    // Google OAuth 2.0 credentials  -  optional; omit to disable Google sign-in.
-    // Register the redirect URI at: https://console.cloud.google.com
-    //   Redirect URI: <APP_URL>/api/auth/oauth/google/callback
-    GOOGLE_CLIENT_ID:     z.string().min(1).optional(),
-    GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
-    // Secret for HMAC-signing the OAuth state parameter (CSRF nonce).
-    // Required when Google OAuth credentials are configured.
-    OAUTH_STATE_SECRET: z.string().min(32).optional(),
-  }).superRefine((val, ctx) => {
-    const hasGoogle = val.GOOGLE_CLIENT_ID || val.GOOGLE_CLIENT_SECRET;
-    if (hasGoogle && !val.OAUTH_STATE_SECRET) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: 'OAUTH_STATE_SECRET (min 32 chars) is required when Google OAuth is configured',
-        path: ['OAUTH_STATE_SECRET'],
-      });
-    }
   });
 
 const parsed = envSchema.safeParse(process.env);

@@ -2,6 +2,7 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  output: 'standalone',
   // Proxy all /api/* calls to the Express backend so browser fetches using
   // relative URLs (/api/...) are forwarded transparently. Server components
   // that call fetch() directly use BACKEND_ORIGIN instead (see lib/properties.ts).
