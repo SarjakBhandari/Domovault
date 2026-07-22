@@ -26,10 +26,28 @@ const propertySchema = new mongoose.Schema(
     // Externally-fetched image URL (SSRF-checked before storage). Only the URL
     // is stored, not the image file, so this can be null.
     imageUrl: { type: String, default: null },
+    // Locally uploaded property image (random UUID filename, never original).
+    imageStoredName: { type: String, default: null },
     // QR code stored by randomly-generated filename, never the original name.
     // Never returned in public responses - only accessible via the secure
-    // /api/billing/:id/qr-code endpoint which checks tenant ownership.
+    // /api/properties/:id/qr-code endpoint which checks tenant lease ownership.
     qrCodeStoredName: { type: String, default: null, select: false },
+    // Payment breakdown for tenant billing. Bank account details are encrypted
+    // at rest with AES-256-GCM; never returned in public responses.
+    paymentDetails: {
+      electricityCharge: { type: Number, min: 0, max: 99999, default: null },
+      waterBill: { type: Number, min: 0, max: 99999, default: null },
+      otherBills: {
+        type: [{
+          label: { type: String, trim: true, maxlength: 100, required: true },
+          amount: { type: Number, min: 0, max: 99999, required: true },
+        }],
+        default: [],
+      },
+      bankAccountName: { type: String, trim: true, maxlength: 100, default: null },
+      bankAccountNumberEncrypted: { type: String, default: null, select: false },
+      bankSortCodeEncrypted: { type: String, default: null, select: false },
+    },
   },
   { timestamps: true }
 );
