@@ -14,13 +14,13 @@
   "author": "Sarjak Bhandari",
   "private": true,
   "scripts": {
-    "dev": "node --max-old-space-size=256 node_modules/.bin/next dev",
+    "dev": "node --max-old-space-size=256 node_modules/next/dist/bin/next dev",
     "build": "next build",
     "start": "node --max-old-space-size=256 .next/standalone/server.js",
     "lint": "eslint ."
   },
   "dependencies": {
-    "next": "16.2.9",
+    "next": "16.2.11",
     "react": "19.2.7",
     "react-dom": "19.2.7"
   },
