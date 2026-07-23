@@ -159,44 +159,54 @@ const EXT_TO_MIME = {
   pdf: 'application/pdf',
 };
 
-// Serve a file from the upload directory after the controller has verified
-// ownership. Path is constructed entirely server-side from the DB record;
-// the client never supplies a file path. mimeType is optional  -  derived from
-// the stored filename extension when omitted.
+// Send a stored file to the client.
+// The controller calls this after verifying that the requesting user owns the file.
+// The client never supplies a path - the controller looks up the DB record and
+// passes us the storedName (our UUID). This means there is no way for a client
+// to request an arbitrary file path.
 async function serveUploadedFile(res, storedName, subdir, mimeType) {
   const destDir = path.resolve(env.UPLOAD_DIR, subdir);
   const filePath = path.join(destDir, storedName);
 
-  // Verify the resolved path is still inside the expected directory.
+  // Even though storedName comes from our own database and should always be a UUID,
+  // we verify that the resolved path is inside the expected directory.
+  // If a database compromise ever planted a traversal in storedName (e.g. "../../etc/passwd"),
+  // this check catches it before any file is read.
   if (!filePath.startsWith(destDir + path.sep)) {
     const err = new Error('Path traversal detected');
     err.status = 400;
     throw err;
   }
 
+  // Derive the MIME type from the file extension stored in the database.
   const ext = (storedName.split('.').pop() ?? '').toLowerCase();
   const resolvedMime = mimeType ?? EXT_TO_MIME[ext] ?? 'application/octet-stream';
 
-  // stat gives us Content-Length without loading the file into memory.
+  // Use fs.stat to get the file size without reading the file contents.
+  // This lets us send Content-Length so the browser knows how big the download is.
   const stat = await fs.stat(filePath);
 
   res.setHeader('Content-Type', resolvedMime);
   res.setHeader('Content-Length', stat.size);
+
+  // Images and PDFs can display inline in the browser (safe to render).
+  // Everything else is forced to download as an attachment to prevent the
+  // browser from executing unknown content types.
   const safeInline = IMAGE_MIMES.has(resolvedMime) || resolvedMime === 'application/pdf';
   res.setHeader(
     'Content-Disposition',
     safeInline ? `inline; filename="file.${ext}"` : `attachment; filename="download.${ext}"`
   );
 
-  // Stream the file in chunks instead of reading the whole thing into a
-  // Buffer. This keeps memory usage flat regardless of file size or how many
-  // concurrent downloads are happening.
+  // Stream the file to the client in chunks instead of loading the whole file
+  // into memory first. A 10 MB file does not need 10 MB of heap - the stream
+  // reads a chunk, sends it, frees it, reads the next chunk.
   await new Promise((resolve, reject) => {
     const stream = createReadStream(filePath);
-    stream.pipe(res);
-    stream.on('end', resolve);
-    stream.on('error', reject);
-    res.on('close', () => stream.destroy()); // client disconnected early
+    stream.pipe(res);              // pipe file bytes directly to the HTTP response
+    stream.on('end', resolve);     // promise resolves when the file is fully sent
+    stream.on('error', reject);    // promise rejects if there is a read error
+    res.on('close', () => stream.destroy()); // if the client disconnects early, stop reading the file
   });
 }
 
