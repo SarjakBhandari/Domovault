@@ -163,7 +163,13 @@ async function deleteUser(req, res, next) {
     }
 
     const Lease = require('../models/Lease');
+    const activeLeases = await Lease.find({ tenantId: target._id, status: 'active' }).select('propertyId').lean();
     await Lease.updateMany({ tenantId: target._id, status: 'active' }, { status: 'ended', endDate: new Date() });
+    // Reset property status so the unit becomes bookable again.
+    if (activeLeases.length > 0) {
+      const propertyIds = activeLeases.map((l) => l.propertyId);
+      await Property.updateMany({ _id: { $in: propertyIds } }, { status: 'available' });
+    }
 
     await writeAuditLog({
       actorId: req.user.sub,
@@ -197,10 +203,18 @@ async function removeTenant(req, res, next) {
 
     // End active leases owned by this admin for this tenant (IDOR: only leases
     // owned by the requesting admin are ended).
+    const activeLeases = await Lease.find(
+      { tenantId: target._id, ownerId: req.user.sub, status: 'active' }
+    ).select('propertyId').lean();
     await Lease.updateMany(
       { tenantId: target._id, ownerId: req.user.sub, status: 'active' },
       { status: 'ended', endDate: new Date() }
     );
+    // Reset property status so the unit is available for new applications.
+    if (activeLeases.length > 0) {
+      const propertyIds = activeLeases.map((l) => l.propertyId);
+      await Property.updateMany({ _id: { $in: propertyIds } }, { status: 'available' });
+    }
 
     target.role = 'applicant';
     await target.save();

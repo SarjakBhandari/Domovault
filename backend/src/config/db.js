@@ -16,7 +16,11 @@ async function connectDB() {
     console.warn('MongoDB disconnected');
   });
 
-  await mongoose.connect(env.MONGODB_URI);
+  await mongoose.connect(env.MONGODB_URI, {
+    maxPoolSize: 5,
+    minPoolSize: 1,
+    serverSelectionTimeoutMS: 5000,
+  });
 }
 
 module.exports = connectDB;

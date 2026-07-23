@@ -14,9 +14,9 @@
   "author": "Sarjak Bhandari",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node --max-old-space-size=256 node_modules/.bin/next dev",
     "build": "next build",
-    "start": "node .next/standalone/server.js",
+    "start": "node --max-old-space-size=256 .next/standalone/server.js",
     "lint": "eslint ."
   },
   "dependencies": {
@@ -37,7 +37,8 @@
     "typescript": "6.0.3"
   },
   "overrides": {
-    "postcss": "8.5.15"
+    "postcss": "8.5.15",
+    "sharp": "^0.35.3"
   },
   "engines": {
     "node": ">=20"

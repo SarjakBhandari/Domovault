@@ -4,6 +4,7 @@ const Lease = require('../models/Lease');
 const User = require('../models/User');
 const { writeAuditLog, ACTIONS } = require('../utils/audit');
 const { serveUploadedFile, SUBDIR_BY_CATEGORY } = require('../middleware/upload');
+const { generateBillingCycleForLease } = require('./billing.controller');
 
 // Applicant: submit a new application for a property.
 async function createApplication(req, res, next) {
@@ -131,6 +132,9 @@ async function reviewApplication(req, res, next) {
         rentAmount: property.rentPerMonth,
         startDate: new Date(),
       });
+
+      // Immediately generate the first billing cycle (due 1st of next month).
+      await generateBillingCycleForLease(lease);
 
       // Promote the applicant to 'tenant' role.
       await User.updateOne({ _id: application.applicantId }, { $set: { role: 'tenant' } });

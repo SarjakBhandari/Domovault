@@ -12,6 +12,7 @@ type Status = 'idle' | 'submitting' | 'error';
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function LoginPage() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, rememberMe }),
       });
 
       if (!res.ok) {
@@ -175,6 +176,19 @@ export default function LoginPage() {
                 required
                 hideLabel
               />
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <input
+                id="rememberMe"
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-brand-700 accent-brand-700 cursor-pointer"
+              />
+              <label htmlFor="rememberMe" className="text-sm text-slate-600 cursor-pointer select-none">
+                Remember me
+              </label>
             </div>
 
             <button

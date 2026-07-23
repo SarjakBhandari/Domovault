@@ -7,7 +7,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
 FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS runtime
-ENV NODE_ENV=production
+ENV NODE_ENV=production \
+    NODE_OPTIONS="--max-old-space-size=256"
 WORKDIR /app
 
 # The official image already ships an unprivileged "node" user (uid/gid 1000);

@@ -4,6 +4,8 @@ const methodNotAllowed = require('../middleware/methodGuard');
 const { verifyCsrfToken } = require('../middleware/csrf');
 const requireAuth = require('../middleware/requireAuth');
 const requireRole = require('../middleware/requireRole');
+const validateBody = require('../middleware/validateBody');
+const { listAuditLogsSchema } = require('../validators/admin.validators');
 
 const router = express.Router();
 
@@ -16,7 +18,7 @@ router
 
 router
   .route('/audit-logs')
-  .post(requireAuth, requireRole('admin'), verifyCsrfToken, adminController.listAuditLogs)
+  .post(requireAuth, requireRole('admin'), verifyCsrfToken, validateBody(listAuditLogsSchema), adminController.listAuditLogs)
   .all(methodNotAllowed(['POST']));
 
 router

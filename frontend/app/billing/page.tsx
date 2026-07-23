@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, startTransition } from 'react';
+import { useEffect, useRef, useState, startTransition } from 'react';
 import Link from 'next/link';
 import { apiJson, apiFetch } from '@/lib/api';
 import { getAccessToken } from '@/lib/authToken';
@@ -26,10 +26,10 @@ type PaymentDetails = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
-  pending_proof: 'Awaiting proof',
-  proof_submitted: 'Under review',
-  confirmed: 'Confirmed',
-  rejected: 'Rejected',
+  pending_proof: 'Awaiting receipt',
+  proof_submitted: 'Receipt submitted - under review',
+  confirmed: 'Payment confirmed',
+  rejected: 'Receipt rejected',
 };
 
 const STATUS_BADGE: Record<string, string> = {
@@ -49,6 +49,26 @@ export default function BillingPage() {
   const [billReqMsg, setBillReqMsg] = useState<string | null>(null);
   const [billReqNote, setBillReqNote] = useState('');
   const [billReqSending, setBillReqSending] = useState(false);
+  const [proofUrls, setProofUrls] = useState<Record<string, string>>({});
+  const [proofLoading, setProofLoading] = useState<string | null>(null);
+  const [proofError, setProofError] = useState<Record<string, string>>({});
+
+  // Track every blob URL we create so we can revoke them all on unmount.
+  const blobRegistry = useRef<string[]>([]);
+  function makeBlobUrl(blob: Blob): string {
+    const url = URL.createObjectURL(blob);
+    blobRegistry.current.push(url);
+    return url;
+  }
+  function revokeBlobUrl(url: string) {
+    URL.revokeObjectURL(url);
+    blobRegistry.current = blobRegistry.current.filter((u) => u !== url);
+  }
+
+  // Revoke all tracked blob URLs when the component unmounts.
+  useEffect(() => {
+    return () => { blobRegistry.current.forEach(URL.revokeObjectURL); };
+  }, []);
 
   useEffect(() => {
     startTransition(() => setStatus('loading'));
@@ -59,7 +79,7 @@ export default function BillingPage() {
         setStatus('ready');
         const propertyIds = [...new Set(
           data
-            .filter((c) => ['pending_proof', 'rejected'].includes(c.status) && c.propertyId)
+            .filter((c) => ['pending_proof', 'rejected', 'proof_submitted'].includes(c.status) && c.propertyId)
             .map((c) => c.propertyId as string)
         )];
         propertyIds.forEach(async (pid) => {
@@ -71,7 +91,7 @@ export default function BillingPage() {
             const res = await apiFetch(`/api/properties/${pid}/qr-code`);
             if (res.ok) {
               const blob = await res.blob();
-              setQrUrls((prev) => ({ ...prev, [pid]: URL.createObjectURL(blob) }));
+              setQrUrls((prev) => ({ ...prev, [pid]: makeBlobUrl(blob) }));
             }
           } catch { /* no QR code */ }
         });
@@ -122,6 +142,30 @@ export default function BillingPage() {
       setUploadMsg((prev) => ({ ...prev, [cycleId]: { text: 'Could not reach the server. Check your connection.', ok: false } }));
     } finally {
       setUploading(null);
+    }
+  }
+
+  async function viewProof(cycleId: string) {
+    if (proofUrls[cycleId]) {
+      revokeBlobUrl(proofUrls[cycleId]);
+      setProofUrls((prev) => { const n = { ...prev }; delete n[cycleId]; return n; });
+      return;
+    }
+    setProofLoading(cycleId);
+    setProofError((prev) => { const n = { ...prev }; delete n[cycleId]; return n; });
+    try {
+      const res = await apiFetch(`/api/billing/${cycleId}/proof/download`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setProofError((prev) => ({ ...prev, [cycleId]: data?.error ?? 'Could not load receipt.' }));
+        return;
+      }
+      const blob = await res.blob();
+      setProofUrls((prev) => ({ ...prev, [cycleId]: makeBlobUrl(blob) }));
+    } catch {
+      setProofError((prev) => ({ ...prev, [cycleId]: 'Could not reach the server.' }));
+    } finally {
+      setProofLoading(null);
     }
   }
 
@@ -307,9 +351,53 @@ export default function BillingPage() {
                 </div>
               )}
 
-              {(cycle.status === 'pending_proof' || cycle.status === 'rejected') && (
+              {/* View submitted receipt - visible for any cycle that has a proof */}
+              {(cycle.status === 'proof_submitted' || cycle.status === 'confirmed' || cycle.status === 'rejected') && (
                 <div className="mt-4 border-t border-slate-100 pt-4">
-                  <label className="label">Upload payment proof (JPEG, PNG, or WebP)</label>
+                  <button
+                    onClick={() => viewProof(cycle._id)}
+                    disabled={proofLoading === cycle._id}
+                    className="flex items-center gap-1.5 text-sm font-medium text-brand-700 hover:text-brand-800 transition-colors disabled:opacity-50"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                    {proofLoading === cycle._id
+                      ? 'Loading...'
+                      : proofUrls[cycle._id]
+                        ? 'Hide receipt'
+                        : 'View submitted receipt'}
+                  </button>
+                  {proofError[cycle._id] && (
+                    <p className="mt-2 text-xs text-red-600">{proofError[cycle._id]}</p>
+                  )}
+                  {proofUrls[cycle._id] && (
+                    <div className="mt-3">
+                      <img
+                        src={proofUrls[cycle._id]}
+                        alt="Submitted payment receipt"
+                        loading="lazy"
+                        className="max-w-full rounded-xl border border-slate-200 shadow-sm"
+                        style={{ maxHeight: '420px', objectFit: 'contain' }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Upload / re-upload receipt */}
+              {(cycle.status === 'pending_proof' || cycle.status === 'rejected' || cycle.status === 'proof_submitted') && (
+                <div className="mt-4 border-t border-slate-100 pt-4">
+                  <label className="label">
+                    {cycle.status === 'proof_submitted' ? 'Update payment receipt' : 'Upload payment receipt'}
+                    <span className="ml-1 font-normal text-slate-400">(JPEG, PNG, or WebP)</span>
+                  </label>
+                  {cycle.status === 'proof_submitted' && (
+                    <p className="mb-2 text-xs text-slate-500">
+                      Your receipt is under review. You can replace it with a different file if needed.
+                    </p>
+                  )}
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp"

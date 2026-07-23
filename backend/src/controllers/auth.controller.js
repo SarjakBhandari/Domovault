@@ -12,13 +12,16 @@ const { sendOtpEmail, sendPasswordResetEmail } = require('../utils/mailer');
 
 const REFRESH_COOKIE_NAME = 'refreshToken';
 
-function setRefreshCookie(res, token) {
-  res.cookie(REFRESH_COOKIE_NAME, token, {
+function setRefreshCookie(res, token, persist = true) {
+  const opts = {
     httpOnly: true,            // JS cannot read it, so XSS on the frontend cannot steal the token
     secure: env.NODE_ENV === 'production',
     sameSite: 'strict',        // browser never sends it on cross-site requests (CSRF layer 1)
-    maxAge: ms(env.JWT_REFRESH_EXPIRES_IN),
-  });
+  };
+  // persist=true: cookie survives browser restarts (maxAge set).
+  // persist=false: session cookie - deleted when browser closes.
+  if (persist) opts.maxAge = ms(env.JWT_REFRESH_EXPIRES_IN);
+  res.cookie(REFRESH_COOKIE_NAME, token, opts);
 }
 
 function clearRefreshCookie(res) {
@@ -32,12 +35,12 @@ function clearRefreshCookie(res) {
 // The only two paths that produce a real session: successful login (no MFA) and
 // successful MFA verification. Keeping session issuance in one place means
 // there is no forgotten code path that skips token signing or cookie setup.
-async function issueSession(res, user) {
+async function issueSession(res, user, rememberMe = true) {
   const accessToken = signAccessToken({ sub: user._id.toString(), role: user.role });
   const refreshToken = signRefreshToken({ sub: user._id.toString() });
   user.setRefreshToken(refreshToken);
   await user.save();
-  setRefreshCookie(res, refreshToken);
+  setRefreshCookie(res, refreshToken, rememberMe);
   return accessToken;
 }
 
@@ -114,7 +117,7 @@ async function resendOtp(req, res, next) {
 
 async function login(req, res, next) {
   try {
-    const { email, password } = req.body;
+    const { email, password, rememberMe = false } = req.body;
 
     const user = await User.findOne({ email }).select('+passwordHash');
     if (!user) {
@@ -151,7 +154,7 @@ async function login(req, res, next) {
       return res.json({ mfaRequired: true, mfaToken });
     }
 
-    const accessToken = await issueSession(res, user);
+    const accessToken = await issueSession(res, user, rememberMe);
     return res.json({ accessToken, user: user.toJSON() });
   } catch (err) {
     next(err);

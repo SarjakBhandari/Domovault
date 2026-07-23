@@ -1,6 +1,7 @@
 const Lease = require('../models/Lease');
 const BillingCycle = require('../models/BillingCycle');
 const BillRequest = require('../models/BillRequest');
+const Property = require('../models/Property');
 const { writeAuditLog, ACTIONS } = require('../utils/audit');
 const { serveUploadedFile, SUBDIR_BY_CATEGORY } = require('../middleware/upload');
 
@@ -54,9 +55,12 @@ async function uploadPaymentProof(req, res, next) {
       return res.status(404).json({ error: 'Billing cycle not found' });
     }
 
+    // Only allow re-upload while pending or rejected. proof_submitted means
+    // admin review is in progress - swapping the file mid-review would let a
+    // tenant silently substitute proof after the admin has already opened it.
     if (!['pending_proof', 'rejected'].includes(cycle.status)) {
       return res.status(409).json({
-        error: 'Payment proof cannot be submitted for a cycle that is already under review or confirmed.',
+        error: 'Payment proof cannot be updated for a cycle that is already submitted or confirmed.',
       });
     }
 
@@ -154,6 +158,20 @@ async function confirmPayment(req, res, next) {
 async function downloadProof(req, res, next) {
   try {
     const cycle = await BillingCycle.findOne({ _id: req.params.id, tenantId: req.user.sub });
+    if (!cycle || !cycle.paymentProof || !cycle.paymentProof.storedName) {
+      return res.status(404).json({ error: 'Payment proof not found' });
+    }
+
+    await serveUploadedFile(res, cycle.paymentProof.storedName, SUBDIR_BY_CATEGORY.proof, cycle.paymentProof.mimeType);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Admin-only: download the payment proof for a cycle on a property they own.
+async function adminDownloadProof(req, res, next) {
+  try {
+    const cycle = await BillingCycle.findOne({ _id: req.params.id, ownerId: req.user.sub });
     if (!cycle || !cycle.paymentProof || !cycle.paymentProof.storedName) {
       return res.status(404).json({ error: 'Payment proof not found' });
     }
@@ -268,6 +286,9 @@ async function listBillRequests(req, res, next) {
 
 // Admin-only: mark a bill request as sent. Ownership enforced  -  only the
 // property's owner can update the request.
+// Requires the property to have a QR code uploaded (so the tenant can scan to pay).
+// Also generates a billing cycle for the tenant's lease so it appears immediately
+// in their billing section.
 async function sendBillRequest(req, res, next) {
   try {
     const request = await BillRequest.findOne({ _id: req.params.id, ownerId: req.user.sub });
@@ -277,6 +298,23 @@ async function sendBillRequest(req, res, next) {
 
     if (request.status === 'sent') {
       return res.status(409).json({ error: 'Bill request already marked as sent' });
+    }
+
+    // QR code is mandatory: the tenant needs it to make the payment.
+    const property = await Property.findById(request.propertyId).select('+qrCodeStoredName');
+    if (!property || !property.qrCodeStoredName) {
+      return res.status(422).json({
+        error: 'NO_QR_CODE',
+        message: 'This property has no QR code. Upload one before sending the bill.',
+        propertyId: request.propertyId,
+      });
+    }
+
+    // Ensure a billing cycle exists for the tenant's lease so it appears in
+    // their billing section immediately.
+    const lease = await Lease.findById(request.leaseId);
+    if (lease && lease.status === 'active') {
+      await generateBillingCycleForLease(lease);
     }
 
     request.status = 'sent';
@@ -302,6 +340,7 @@ module.exports = {
   uploadPaymentProof,
   confirmPayment,
   downloadProof,
+  adminDownloadProof,
   listLeases,
   generateBillingCycleForLease,
   createBillRequest,

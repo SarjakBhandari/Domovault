@@ -56,6 +56,12 @@ router
   .get(requireAuth, requireRole('tenant'), billingController.downloadProof)
   .all(methodNotAllowed(['GET']));
 
+// Admin: view the payment proof for a cycle on a property they own.
+router
+  .route('/:id/proof/admin-download')
+  .get(requireAuth, requireRole('admin'), billingController.adminDownloadProof)
+  .all(methodNotAllowed(['GET']));
+
 // Admin-only: confirm or reject payment. CSRF required. Ownership enforced
 // in the controller (only the property's owner can confirm, not any admin).
 router

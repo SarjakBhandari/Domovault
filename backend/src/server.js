@@ -27,6 +27,9 @@ async function start() {
     await seedAdmin();
   }
 
+  const { startBillingScheduler } = require('./utils/billingScheduler');
+  startBillingScheduler();
+
   app.listen(env.PORT, () => {
     console.log(`Domovault API listening on port ${env.PORT} [${env.NODE_ENV}]`);
   });

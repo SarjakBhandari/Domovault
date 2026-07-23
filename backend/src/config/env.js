@@ -16,6 +16,10 @@ const envSchema = z
     // session token, even though both are signed with the same algorithm.
     JWT_MFA_SECRET: z.string().min(32, 'JWT_MFA_SECRET must be at least 32 characters'),
     JWT_MFA_EXPIRES_IN: z.string().min(1).default('5m'),
+    // Dedicated key for CSRF HMAC so rotating JWT secrets never silently
+    // invalidates outstanding CSRF tokens, and a leaked JWT key cannot be
+    // used to forge CSRF tokens.
+    CSRF_SECRET: z.string().min(32, 'CSRF_SECRET must be at least 32 characters'),
     PII_ENCRYPTION_KEY: z
       .string()
       .refine((val) => Buffer.from(val, 'base64').length === 32, {

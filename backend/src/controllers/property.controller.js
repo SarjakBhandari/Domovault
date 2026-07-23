@@ -306,7 +306,16 @@ async function getPaymentDetails(req, res, next) {
     }
 
     const property = await Property.findById(req.params.id)
-      .select('paymentDetails rentPerMonth title +paymentDetails.bankAccountNumberEncrypted +paymentDetails.bankSortCodeEncrypted');
+      .select([
+        'rentPerMonth',
+        'title',
+        'paymentDetails.electricityCharge',
+        'paymentDetails.waterBill',
+        'paymentDetails.otherBills',
+        'paymentDetails.bankAccountName',
+        '+paymentDetails.bankAccountNumberEncrypted',
+        '+paymentDetails.bankSortCodeEncrypted',
+      ].join(' '));
     if (!property) {
       return res.status(404).json({ error: 'Property not found' });
     }
@@ -365,7 +374,6 @@ module.exports = {
   importPhoto,
   uploadQrCode,
   listOwnProperties,
-  getQrCode,
   uploadPropertyImage,
   servePropertyImage,
   updatePaymentDetails,

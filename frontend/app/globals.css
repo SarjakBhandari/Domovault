@@ -1,4 +1,4 @@
-@import "tailwindcss";
+﻿@import "tailwindcss";
 
 @theme {
   /* Maroon brand palette */
@@ -16,7 +16,7 @@
   --font-sans: var(--font-jakarta), system-ui, -apple-system, sans-serif;
 }
 
-/* ─── CSS custom properties ────────────────────────────────────────────────── */
+/* --------- CSS custom properties ------------------------------------------------------------------------------------------------------------------------------------------------------ */
 :root {
   --sidebar-width: 15rem;
   --sidebar-collapsed-width: 3.5rem;
@@ -65,7 +65,7 @@
 
 @layer utilities {
 
-  /* ─── Card ─── */
+  /* --------- Card --------- */
   .card {
     background: #ffffff;
     border-radius: 12px;
@@ -85,7 +85,7 @@
       0 3px 8px -2px rgb(0 0 0 / 0.05);
   }
 
-  /* ─── Primary button ─── */
+  /* --------- Primary button --------- */
   .btn-primary {
     display: inline-flex;
     align-items: center;
@@ -128,7 +128,7 @@
     transform: none;
   }
 
-  /* ─── Secondary button ─── */
+  /* --------- Secondary button --------- */
   .btn-secondary {
     display: inline-flex;
     align-items: center;
@@ -158,7 +158,7 @@
     box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   }
 
-  /* ─── Input ─── */
+  /* --------- Input --------- */
   .input {
     display: block;
     width: 100%;
@@ -193,7 +193,7 @@
   .input.resize-y   { resize: vertical; }
   .input.resize-none { resize: none; }
 
-  /* ─── Label ─── */
+  /* --------- Label --------- */
   .label {
     display: block;
     font-size: 0.8125rem;
@@ -203,7 +203,7 @@
     letter-spacing: 0.008em;
   }
 
-  /* ─── Section heading ─── */
+  /* --------- Section heading --------- */
   .section-heading {
     font-size: 1.5rem;
     font-weight: 800;
@@ -211,7 +211,7 @@
     color: #0f172a;
   }
 
-  /* ─── Shimmer skeleton ─── */
+  /* --------- Shimmer skeleton --------- */
   .shimmer {
     background: linear-gradient(
       90deg,
@@ -229,7 +229,7 @@
     100% { background-position: -200% 0; }
   }
 
-  /* ─── Badges ─── */
+  /* --------- Badges --------- */
   .badge {
     display: inline-flex;
     align-items: center;
@@ -248,3 +248,4 @@
   .badge-slate  { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 10px; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.01em; background: #f1f5f9; color: #475569; }
   .badge-brand  { display: inline-flex; align-items: center; gap: 4px; border-radius: 999px; padding: 2px 10px; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.01em; background: #fff1f2; color: #800020; }
 }
+

@@ -69,6 +69,9 @@ const userSchema = new mongoose.Schema(
     // SHA-256 hash of the 6-digit OTP sent on registration. Expires in 10 minutes.
     emailOtpHash: { type: String, default: null, select: false },
     emailOtpExpiry: { type: Date, default: null, select: false },
+    // Counts failed OTP attempts so a brute-force across the 10-minute window
+    // is blocked at 5 failures, independent of the IP-level rate limiter.
+    emailOtpFailedAttempts: { type: Number, default: 0, select: false },
   },
   { timestamps: true }
 );
@@ -129,15 +132,23 @@ userSchema.methods.setEmailOtp = function setEmailOtp() {
   return otp;
 };
 
+const EMAIL_OTP_MAX_ATTEMPTS = 5;
+
 userSchema.methods.verifyEmailOtp = function verifyEmailOtp(otp) {
   if (!this.emailOtpHash || !this.emailOtpExpiry) return false;
   if (this.emailOtpExpiry < new Date()) return false;
-  return this.emailOtpHash === hashToken(otp);
+  // Invalidate the OTP after too many wrong guesses so a distributed attacker
+  // cannot brute-force the 6-digit space within the 10-minute window.
+  if ((this.emailOtpFailedAttempts || 0) >= EMAIL_OTP_MAX_ATTEMPTS) return false;
+  if (this.emailOtpHash === hashToken(otp)) return true;
+  this.emailOtpFailedAttempts = (this.emailOtpFailedAttempts || 0) + 1;
+  return false;
 };
 
 userSchema.methods.clearEmailOtp = function clearEmailOtp() {
   this.emailOtpHash = null;
   this.emailOtpExpiry = null;
+  this.emailOtpFailedAttempts = 0;
 };
 
 userSchema.methods.isLocked = function isLocked() {

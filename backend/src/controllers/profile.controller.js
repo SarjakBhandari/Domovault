@@ -97,7 +97,7 @@ async function exportData(req, res, next) {
       Application.find({ applicantId: userId }).lean(),
       Lease.find({ tenantId: userId }).lean(),
       BillingCycle.find({ tenantId: userId }).select('-paymentProof.storedName').lean(),
-      MaintenanceRequest.find({ tenantId: userId }).lean(),
+      MaintenanceRequest.find({ tenantId: userId }).select('-photos.storedName').lean(),
     ]);
 
     if (!user) {

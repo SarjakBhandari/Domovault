@@ -5,6 +5,7 @@ const validateBody = require('../middleware/validateBody');
 const methodNotAllowed = require('../middleware/methodGuard');
 const { verifyCsrfToken } = require('../middleware/csrf');
 const requireAuth = require('../middleware/requireAuth');
+const requireRole = require('../middleware/requireRole');
 const { createUploadMiddleware } = require('../middleware/upload');
 const { authRateLimiter } = require('../middleware/rateLimit');
 
@@ -25,10 +26,11 @@ router
   .get(requireAuth, applicationController.getApplication)
   .all(methodNotAllowed(['GET']));
 
-// Admin-only: approve or reject.
+// Admin-only: approve or reject. requireRole enforces this at the route level
+// so a logic error inside the controller cannot silently allow tenant access.
 router
   .route('/:id/review')
-  .post(requireAuth, verifyCsrfToken, validateBody(reviewApplicationSchema), applicationController.reviewApplication)
+  .post(requireAuth, requireRole('admin'), verifyCsrfToken, validateBody(reviewApplicationSchema), applicationController.reviewApplication)
   .all(methodNotAllowed(['POST']));
 
 // Applicant-only: upload a supporting document.
