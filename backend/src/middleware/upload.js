@@ -72,82 +72,86 @@ function createUploadMiddleware(category) {
   return [
     multerMiddleware,
     async (req, res, next) => {
-      if (!req.file) {
-        return next();
-      }
-
-      const ftFromBuffer = await getFileTypeFromBuffer();
-
-      // Read the file's magic bytes to determine the real type.
-      // The "magic bytes" are a signature at the very start of the file
-      // (e.g. JPEG files always begin with FF D8 FF). This cannot be faked
-      // by changing the filename extension or the Content-Type header.
-      const detected = await ftFromBuffer(req.file.buffer);
-
-      if (!detected || !allowed.includes(detected.mime)) {
-        // Either we could not detect a type, or the detected type is not
-        // on the allow-list for this upload category. Reject immediately.
-        return res.status(400).json({
-          error: `File type not allowed. Accepted types for this upload: ${allowed.join(', ')}`,
-        });
-      }
-
-      // For image files, we re-encode through sharp with two goals:
-      // 1. Strip all EXIF metadata (GPS, camera model, owner name, timestamps)
-      // 2. Compress the image to reduce storage and bandwidth costs
-      // withMetadata(false) is the key call - it tells sharp not to copy
-      // any metadata from the source into the output file.
-      let outputBuffer = req.file.buffer;
-      if (IMAGE_MIMES.has(detected.mime)) {
-        let pipeline = sharp(req.file.buffer).withMetadata(false); // strip all metadata
-        if (detected.mime === 'image/jpeg') {
-          // mozjpeg is a higher-quality JPEG encoder - better compression at the same visual quality
-          pipeline = pipeline.jpeg({ quality: 80, mozjpeg: true });
-        } else if (detected.mime === 'image/png') {
-          // compressionLevel 9 is maximum, effort 10 tries harder to find a smaller file
-          pipeline = pipeline.png({ compressionLevel: 9, effort: 10 });
-        } else if (detected.mime === 'image/webp') {
-          pipeline = pipeline.webp({ quality: 80 });
+      try {
+        if (!req.file) {
+          return next();
         }
-        outputBuffer = await pipeline.toBuffer(); // run the pipeline and collect the result
+
+        const ftFromBuffer = await getFileTypeFromBuffer();
+
+        // Read the file's magic bytes to determine the real type.
+        // The "magic bytes" are a signature at the very start of the file
+        // (e.g. JPEG files always begin with FF D8 FF). This cannot be faked
+        // by changing the filename extension or the Content-Type header.
+        const detected = await ftFromBuffer(req.file.buffer);
+
+        if (!detected || !allowed.includes(detected.mime)) {
+          // Either we could not detect a type, or the detected type is not
+          // on the allow-list for this upload category. Reject immediately.
+          return res.status(400).json({
+            error: `File type not allowed. Accepted types for this upload: ${allowed.join(', ')}`,
+          });
+        }
+
+        // For image files, we re-encode through sharp with two goals:
+        // 1. Strip all EXIF metadata (GPS, camera model, owner name, timestamps)
+        // 2. Compress the image to reduce storage and bandwidth costs
+        // withMetadata(false) is the key call - it tells sharp not to copy
+        // any metadata from the source into the output file.
+        let outputBuffer = req.file.buffer;
+        if (IMAGE_MIMES.has(detected.mime)) {
+          let pipeline = sharp(req.file.buffer).withMetadata(false); // strip all metadata
+          if (detected.mime === 'image/jpeg') {
+            // mozjpeg is a higher-quality JPEG encoder - better compression at the same visual quality
+            pipeline = pipeline.jpeg({ quality: 80, mozjpeg: true });
+          } else if (detected.mime === 'image/png') {
+            // compressionLevel 9 is maximum, effort 10 tries harder to find a smaller file
+            pipeline = pipeline.png({ compressionLevel: 9, effort: 10 });
+          } else if (detected.mime === 'image/webp') {
+            pipeline = pipeline.webp({ quality: 80 });
+          }
+          outputBuffer = await pipeline.toBuffer(); // run the pipeline and collect the result
+        }
+
+        // Free the original multer buffer from memory now that we have the processed output.
+        // This prevents two copies of the image data from sitting in the Node heap at once.
+        req.file.buffer = null;
+
+        // Assign a random UUID as the filename on disk.
+        // The original filename from the client is thrown away - this prevents:
+        // - Path traversal via filenames like "../../etc/passwd"
+        // - Directory enumeration (attacker cannot guess another user's filenames)
+        // - Information leakage from device-generated names like "IMG_20240601_GPS.jpg"
+        const storedName = `${crypto.randomUUID()}.${detected.ext}`;
+        const destDir = path.resolve(env.UPLOAD_DIR, subdir);
+        const destPath = path.join(destDir, storedName);
+
+        // Verify the destination path is still inside the expected directory.
+        // This is a belt-and-suspenders check: storedName is a UUID so it cannot
+        // contain ".." to escape. But if a future code change ever passes user
+        // input here, this guard will catch it.
+        if (!destPath.startsWith(destDir + path.sep) && destPath !== destDir) {
+          return res.status(500).json({ error: 'Internal storage path error' });
+        }
+
+        await fs.mkdir(destDir, { recursive: true }); // create the directory if it doesn't exist yet
+        await fs.writeFile(destPath, outputBuffer);    // write the sanitised file to disk
+
+        const sizeBytes = outputBuffer.length;
+        // Free the processed buffer immediately now that it is on disk.
+        outputBuffer = null;
+
+        req.uploadedFile = {
+          storedName,
+          mimeType: detected.mime,
+          sizeBytes,
+          uploadedAt: new Date(),
+        };
+
+        next();
+      } catch (err) {
+        next(err);
       }
-
-      // Free the original multer buffer from memory now that we have the processed output.
-      // This prevents two copies of the image data from sitting in the Node heap at once.
-      req.file.buffer = null;
-
-      // Assign a random UUID as the filename on disk.
-      // The original filename from the client is thrown away - this prevents:
-      // - Path traversal via filenames like "../../etc/passwd"
-      // - Directory enumeration (attacker cannot guess another user's filenames)
-      // - Information leakage from device-generated names like "IMG_20240601_GPS.jpg"
-      const storedName = `${crypto.randomUUID()}.${detected.ext}`;
-      const destDir = path.resolve(env.UPLOAD_DIR, subdir);
-      const destPath = path.join(destDir, storedName);
-
-      // Verify the destination path is still inside the expected directory.
-      // This is a belt-and-suspenders check: storedName is a UUID so it cannot
-      // contain ".." to escape. But if a future code change ever passes user
-      // input here, this guard will catch it.
-      if (!destPath.startsWith(destDir + path.sep) && destPath !== destDir) {
-        return res.status(500).json({ error: 'Internal storage path error' });
-      }
-
-      await fs.mkdir(destDir, { recursive: true }); // create the directory if it doesn't exist yet
-      await fs.writeFile(destPath, outputBuffer);    // write the sanitised file to disk
-
-      const sizeBytes = outputBuffer.length;
-      // Free the processed buffer immediately now that it is on disk.
-      outputBuffer = null;
-
-      req.uploadedFile = {
-        storedName,
-        mimeType: detected.mime,
-        sizeBytes,
-        uploadedAt: new Date(),
-      };
-
-      next();
     },
   ];
 }
